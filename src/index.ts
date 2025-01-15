@@ -1,13 +1,13 @@
-import EMgLoader from '#loader/EmgLoader'
+import EmgLoader from '#loader/EmgLoader'
 import EmgRecording from './EmgRecording'
 import EmgService from '#service/EmgService'
 import runtime from './runtime'
 import settings from './config'
 
-const modality = 'document'
+const modality = 'emg'
 
 export {
-    EMgLoader,
+    EmgLoader,
     EmgRecording,
     EmgService,
     modality,
