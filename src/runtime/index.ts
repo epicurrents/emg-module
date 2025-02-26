@@ -23,6 +23,9 @@ const EMG: SafeObject & RuntimeResourceModule = {
         full: 'Electromyography',
         short: 'EMG',
     },
+    async applyConfiguration (_config) {
+
+    },
     setPropertyValue (property: string, value: unknown, resource?: DataResource, state?: StateManager) {
         // EMG specific property mutations.
         const activeRes = resource
