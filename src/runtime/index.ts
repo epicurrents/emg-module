@@ -36,11 +36,56 @@ const EMG: SafeObject & RuntimeResourceModule = {
         if (!activeRes) {
             return
         }
-        if (property === '') {
-            if (typeof value !== 'number') {
-                logInvalidMutation(property, value, SCOPE)
+        if (property === 'highpass-filter') {
+            if (typeof value !== 'number' || value < 0) {
+                logInvalidMutation(property, value, SCOPE, "Value must be a positive number.")
                 return
             }
+            if (activeRes.filters?.highpass !== undefined) {
+                activeRes.setHighpassFilter(value)
+            }
+        } else if (property === 'lowpass-filter') {
+            if (typeof value !== 'number' || value < 0) {
+                logInvalidMutation(property, value, SCOPE, "Value must be a positive number.")
+                return
+            }
+            if (activeRes.filters?.lowpass !== undefined) {
+                activeRes.setLowpassFilter(value)
+            }
+        } else if (property === 'notch-filter') {
+            if (typeof value !== 'number' || value < 0) {
+                logInvalidMutation(property, value, SCOPE, "Value must be a positive number.")
+                return
+            }
+            if (activeRes.filters?.notch !== undefined) {
+                activeRes.setNotchFilter(value)
+            }
+        } else if (property === 'sensitivity') {
+            if (typeof value !== 'number' || value <= 0) {
+                logInvalidMutation(property, value, SCOPE, "Value must be a positive number.")
+                return
+            }
+            if (activeRes.sensitivity !== undefined) {
+                activeRes.sensitivity = value
+            }
+        } else if (property === 'timebase') {
+            if (typeof value !== 'number' || value <= 0) {
+                logInvalidMutation(property, value, SCOPE, "Value must be a positive number.")
+                return
+            }
+            if (activeRes.timebase !== undefined) {
+                activeRes.timebase = value
+            }
+        } else if (property === 'timebase-unit') {
+            if (typeof value !== 'string' || value === '') {
+                logInvalidMutation(property, value, SCOPE, "Value must be a non-empty string.")
+                return
+            }
+            if (activeRes.timebaseUnit !== undefined) {
+                activeRes.timebaseUnit = value
+            }
+        } else {
+            logInvalidMutation(property, value, SCOPE, "Unknown property.")
         }
     },
 }

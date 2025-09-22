@@ -28,12 +28,7 @@ export default class EmgService extends GenericBiosignalService implements EmgDa
         if (!data) {
             return false
         }
-        // Responses must have a matching commission.
-        const commission = this._getCommissionForMessage(message)
-        if (!commission) {
-            return false
-        }
-        return false
+        return super.handleMessage(message)
     }
 
     async prepareWorker (study: StudyContext) {

@@ -8,19 +8,22 @@
 import { GenericStudyLoader } from '@epicurrents/core'
 import type {
     ConfigStudyLoader,
-    FileFormatReader,
+    FileFormatImporter,
     FileSystemItem,
     StudyContext,
 } from '@epicurrents/core/dist/types'
 import { EmgRecording } from '..'
-import type { EmgResource } from '#types'
+import type { EmgResource, EmgStudyContext } from '#types'
 import { Log } from 'scoped-event-log'
 
-const SCOPE = 'EmgLoader'
+const SCOPE = 'EmgStudyLoader'
 
-export default class EmgLoader extends GenericStudyLoader {
-    constructor (name: string, reader: FileFormatReader) {
-        super(name, ['emg'], reader)
+export default class EmgStudyLoader extends GenericStudyLoader {
+
+    protected _study: EmgStudyContext | null = null
+
+    constructor (name: string, importer: FileFormatImporter) {
+        super(name, ['emg'], importer)
     }
 
     get resourceModality () {
@@ -41,7 +44,7 @@ export default class EmgLoader extends GenericStudyLoader {
             SCOPE)
             return null
         }
-        const worker = this._fileReader?.getFileTypeWorker()
+        const worker = this._studyImporter?.getFileTypeWorker('emg')
         if (!worker) {
             Log.error(`Study loader does not have a file worker.`, SCOPE)
             return null

@@ -54,7 +54,7 @@ module.exports = {
             include: /src/,
             // add errors to webpack instead of warnings
             failOnError: true,
-            // allow import cycles that include an asyncronous import,
+            // allow import cycles that include an asynchronous import,
             // e.g. via import(/* webpackMode: "weak" */ './file.js')
             allowAsyncCycles: false,
             // set the current working directory for displaying module paths
@@ -65,8 +65,12 @@ module.exports = {
         extensions: ['.ts', '.js', '.json'],
         alias: {
             '#root': path.resolve(__dirname, './'),
+            '#components': path.resolve(__dirname, 'src', 'components'),
             '#config': path.resolve(__dirname, 'src', 'config'),
+            '#events': path.resolve(__dirname, 'src', 'events'),
+            '#loader': path.resolve(__dirname, 'src', 'loader'),
             '#runtime': path.resolve(__dirname, 'src', 'runtime'),
+            '#service': path.resolve(__dirname, 'src', 'service'),
             '#types': path.resolve(__dirname, 'src', 'types'),
         },
         symlinks: false
