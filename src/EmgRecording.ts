@@ -155,45 +155,27 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
 
     getMainProperties () {
         const props = super.getMainProperties()
-        if (this.state === 'added') {
-            props.set('Waiting to load...', null)
-        } else if (this.state === 'error') {
-            props.set(this._errorReason, null)
-        } else if (this.state === 'loading') {
-            props.set('Loading metadata...', null)
-        } else if (this.state === 'loaded') {
-            props.set('Initializing...', null)
+        if (props.size) {
+            return props
         } else if (this.state === 'ready') {
-            // Dependencies may still be loading.
-            if (this._dependenciesMissing.length > 0) {
-                const totalDeps = this._dependenciesMissing.length + this._dependenciesReady.length
-                props.set(
-                    'Loading dependency {n}/{t}...',
-                    {
-                        n: totalDeps - this._dependenciesMissing.length + 1,
-                        t: totalDeps,
-                    }
-                )
-            } else {
-                props.set(
-                    this._channels.length.toString(),
-                    {
-                        icon: 'wave',
-                        n: this._channels.length,
-                        title: this._channels.length === 1 ? '1 signal' : '{n} signals'
-                    }
-                )
-                const timeParts = secondsToTimeString(this._totalDuration, true) as number[]
-                const timeShort = timePartsToShortString(timeParts)
-                props.set(
-                    timeShort,
-                    {
-                        icon: 'time',
-                        t: Math.floor(this._totalDuration) + ' seconds',
-                        title: 'Duration: {t}',
-                    }
-                )
-            }
+            props.set(
+                this._channels.length.toString(),
+                {
+                    icon: 'wave',
+                    n: this._channels.length,
+                    title: this._channels.length === 1 ? '1 signal' : '{n} signals'
+                }
+            )
+            const timeParts = secondsToTimeString(this._totalDuration, true) as number[]
+            const timeShort = timePartsToShortString(timeParts)
+            props.set(
+                timeShort,
+                {
+                    icon: 'time',
+                    t: Math.floor(this._totalDuration) + ' seconds',
+                    title: 'Duration: {t}',
+                }
+            )
         }
         return props
     }
