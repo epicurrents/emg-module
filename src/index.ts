@@ -1,4 +1,5 @@
-import EmgAnnotation from '#components/EmgAnnotation'
+import EmgEvent from '#components/EmgEvent'
+import EmgLabel from './components/EmgLabel'
 import EmgRecording from './EmgRecording'
 import EmgService from '#service/EmgService'
 import EmgSourceChannel from '#components/EmgSourceChannel'
@@ -9,7 +10,8 @@ import settings from './config'
 const modality = 'emg'
 
 export {
-    EmgAnnotation,
+    EmgEvent,
+    EmgLabel,
     EmgRecording,
     EmgService,
     EmgSourceChannel,

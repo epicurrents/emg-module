@@ -5,40 +5,18 @@
  * @license    Apache-2.0
  */
 
-import type { BiosignalAnnotation } from '@epicurrents/core/dist/types'
+import type { BiosignalAnnotationEvent, BiosignalAnnotationLabel } from '@epicurrents/core/dist/types'
 import type { EmgModuleSettings } from '#types'
 
 const emgSettings: EmgModuleSettings = {
-    annotations: {
-        convertPatterns: [] as [string, BiosignalAnnotation][],
+    events: {
+        convertPatterns: [] as [string, BiosignalAnnotationEvent][],
         ignorePatterns: [] as string[],
     },
-    defaultMontages: {},
-    defaultSetups: [],
-    filterChannelTypes: {},
-    filterPaddingSeconds: 10,
-    filters: {
-        highpass: {
-            availableValues: [],
-            default: 0,
-        },
-        lowpass: {
-            availableValues: [],
-            default: 0,
-        },
-        notch: {
-            availableValues: [0, 50, 60],
-            default: 0,
-        },
-    },
-    montages: {
-        cacheMax: 1,
-        preCache: false,
-    },
-    notchDefaultFrequency: 0,
-    scale: {
-        availableValues: [-3, -2, -1, 0, 1, 2, 3],
-        default: 0,
+    filterPaddingSeconds: 0.1,
+    labels: {
+        convertPatterns: [] as [string, BiosignalAnnotationLabel][],
+        ignorePatterns: [] as string[],
     },
     showHiddenChannels: false,
     showMissingChannels: false,

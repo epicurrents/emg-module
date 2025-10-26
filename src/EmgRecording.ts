@@ -125,12 +125,20 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 await this.unload()
             }
         }, this.id)
+        this.onPropertyChange('sensitivity', () => {
+            // Update audio gain when sensitivity changes.
+            this.setAudioGain(this._sensitivityGain)
+        }, this.id)
         // Add audio event listeners.
         this._audio.addPlayEndedCallback(() => {
             this.isAudioPlaying = false
             this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_ENDED)
             this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_STOPPED)
         })
+    }
+
+    get _sensitivityGain () {
+        return 1/(this.sensitivity || 1)
     }
 
     get isAudioPlaying () {
