@@ -13,6 +13,7 @@ import type {
     StateManager,
 } from '@epicurrents/core/dist/types'
 import type { EmgResource } from '#types'
+import EmgRecording from '../EmgRecording'
 
 const SCOPE = 'emg-runtime-module'
 
@@ -25,6 +26,9 @@ const EMG: SafeObject & RuntimeResourceModule = {
     },
     async applyConfiguration (_config) {
 
+    },
+    getResourceFromSerialized (serialized) {
+        return EmgRecording.fromSerialized(serialized as Partial<EmgResource>)
     },
     setPropertyValue (property: string, value: unknown, resource?: DataResource, state?: StateManager) {
         // EMG specific property mutations.

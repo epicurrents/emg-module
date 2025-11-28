@@ -26,11 +26,55 @@ const SCOPE = "EmgRecording"
 export default class EmgRecording extends GenericBiosignalResource implements EmgResource {
     /** EMG recording events (not including property change events). */
     static readonly EVENTS = { ...GenericBiosignalResource.EVENTS, ...EmgEvents }
+
+    static readonly fromSerialized = (template: Partial<EmgResource>) => {
+        const resource = new EmgRecording(template.name || 'EMG Recording')
+        if (template.id) {
+            // Override the generated id with the template id.
+            resource._id = template.id
+        }
+        resource.dataDuration = template.dataDuration || 0
+        resource.totalDuration = resource.dataDuration
+        resource.samplingRate = template.samplingRate || 0
+        // Map channels.
+        let chIdx = 0
+        resource._channels = template.channels?.filter(c => c.signal).map((ch) => {
+            const channel = new EmgSourceChannel(
+                ch?.name || `channel_${chIdx++}`,
+                ch?.label || `Ch ${chIdx}`,
+                ch?.index || 0,
+                ch?.samplingRate || 0,
+                ch?.visible ?? true,
+                ch
+            )
+            channel.setSignal(ch.signal as Float32Array)
+            // Set the signal cache status if not already set.
+            if (!resource.signalCacheStatus[1]) {
+                resource.signalCacheStatus[1] = resource.dataDuration
+            }
+            try{
+                resource.setAudioSignals(
+                    resource.dataDuration,
+                    resource.samplingRate || 0,
+                    ch.signal as Float32Array
+                )
+            } catch (e) {
+                console.log(e)
+            }
+            return channel
+        }) || []
+        // Only one chanel is supported at the moment.
+        if (resource.channels.length) {
+            resource.channels.splice(1)
+        }
+        resource.state = 'ready'
+        return resource
+    }
+
     protected _audio: BiosignalAudio
     protected _isAudioPlaying = false
-    protected _samplingRate: number
-    protected _service: EmgService
-    protected _worker?: Worker
+    protected _samplingRate: number | null = null
+    protected _service: EmgService | null = null
     #SETTINGS = (window.__EPICURRENTS__?.RUNTIME?.SETTINGS.modules.eeg as EmgModuleSettings) || null
     /**
      * Create a new EMG recording.
@@ -38,9 +82,28 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
      * @param source - Recording source as a study context.
      * @param worker - Worker for the EMG service.
      */
-    constructor (name: string, source: EmgStudyContext, worker: Worker) {
+    constructor (name: string, source?: EmgStudyContext, worker?: Worker) {
         super(name, 'emg', source)
         this._audio = new BiosignalAudio(name)
+        // Unload on close if setting is enabled.
+        this.addEventListener(AssetEvents.DEACTIVATE, async () => {
+            if (this.#SETTINGS?.unloadOnClose && this._service?.isReady) {
+                await this.unload()
+            }
+        }, this.id)
+        this.onPropertyChange('sensitivity', () => {
+            // Update audio gain when sensitivity changes.
+            this.setAudioGain(this._sensitivityGain)
+        }, this.id)
+        // Add audio event listeners.
+        this._audio.addPlayEndedCallback(() => {
+            this.isAudioPlaying = false
+            this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_ENDED)
+            this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_STOPPED)
+        })
+        if (!source) {
+            return
+        }
         for (let i=0; i<source.meta.nChannels; i++) {
             this._channels.push(new EmgSourceChannel(
                 `ch_${i}`,
@@ -53,8 +116,10 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         this._dataDuration = source.meta.duration || 0
         this._totalDuration = this._dataDuration // EMG recordings are continuous.
         this._samplingRate = source.meta.samplingRate || 0
+        if (!worker) {
+            return
+        }
         this._service = new EmgService(this, worker)
-        this._state = 'loading'
         this._service.prepareWorker(source).then((response) => {
             if (response) {
                 this._state = 'ready'
@@ -63,6 +128,7 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 this._state = 'error'
             }
         })
+        this._state = 'loading'
         // Listen to is-active changes.
         this.addEventListener(AssetEvents.ACTIVATE, async () => {
             // Complete loader setup if not already done.
@@ -110,35 +176,20 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 await this.cacheSignals()
                 this.dispatchEvent(BiosignalResourceEvents.SIGNAL_CACHING_COMPLETE)
                 // Set the signals to use for audio playback.
-                const signals = await this._service.getSignals([0, this._dataDuration])
+                const signals = await this._service?.getSignals([0, this._dataDuration])
                 if (signals) {
                     this.setAudioSignals(
                         this._dataDuration,
-                        this._samplingRate,
+                        this._samplingRate || 0,
                         ...signals.signals.map(s => s.data)
                     )
                 }
             }
         }, this.id)
-        this.addEventListener(AssetEvents.DEACTIVATE, async () => {
-            if (this.#SETTINGS?.unloadOnClose && this._service?.isReady) {
-                await this.unload()
-            }
-        }, this.id)
-        this.onPropertyChange('sensitivity', () => {
-            // Update audio gain when sensitivity changes.
-            this.setAudioGain(this._sensitivityGain)
-        }, this.id)
-        // Add audio event listeners.
-        this._audio.addPlayEndedCallback(() => {
-            this.isAudioPlaying = false
-            this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_ENDED)
-            this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_STOPPED)
-        })
     }
 
     get _sensitivityGain () {
-        return 1/(this.sensitivity || 1)
+        return 1e-6/(this.sensitivity || 1)
     }
 
     get isAudioPlaying () {
@@ -150,10 +201,6 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
 
     get playbackPosition () {
         return this._audio.currentTime
-    }
-
-    get samplingRate () {
-        return this._samplingRate
     }
 
     destroy(): Promise<void> {
@@ -248,6 +295,8 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
 
     setAudioSignals (length: number, samplingRate: number, ...signals: Float32Array[]) {
         if (this._audio) {
+            // We do not expect to see amplitudes over 50 mV in EMG signals.
+            this._audio.sampleMaxAbsValue = 5*1e-2
             this._audio.setSignals(length, samplingRate, ...signals)
         }
     }

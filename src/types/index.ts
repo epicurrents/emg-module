@@ -13,9 +13,6 @@ export interface EmgResource extends BiosignalResource {
     isAudioPlaying: boolean
     /** EMG signal playback position in seconds. */
     playbackPosition: number
-    /** EMG signal sampling rate in Hz. */
-    samplingRate: number // EMG recordings have a constant sampling rate.
-
     /**
      * Play the EMG signal audio from the given position (in seconds).
      * If no position is given, playback continues from the current position.
