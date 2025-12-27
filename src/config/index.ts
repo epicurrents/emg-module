@@ -5,7 +5,7 @@
  * @license    Apache-2.0
  */
 
-import type { BiosignalAnnotationEvent, BiosignalAnnotationLabel } from '@epicurrents/core/dist/types'
+import type { BiosignalAnnotationEvent, AnnotationLabel } from '@epicurrents/core/dist/types'
 import type { EmgModuleSettings } from '#types'
 
 const emgSettings: EmgModuleSettings = {
@@ -15,7 +15,7 @@ const emgSettings: EmgModuleSettings = {
     },
     filterPaddingSeconds: 0.1,
     labels: {
-        convertPatterns: [] as [string, BiosignalAnnotationLabel][],
+        convertPatterns: [] as [string, AnnotationLabel][],
         ignorePatterns: [] as string[],
     },
     showHiddenChannels: false,
