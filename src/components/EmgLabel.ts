@@ -6,32 +6,30 @@
  */
 
 import { ResourceLabel } from '@epicurrents/core'
-import type {
-    AnnotationLabelTemplate,
-    AnnotationLabel,
-} from '@epicurrents/core/dist/types'
+import type { AnnotationLabelTemplate, AnnotationOptions } from '@epicurrents/core/dist/types'
 
-//const SCOPE = 'EmgLabel'
+const SCOPE = 'EmgLabel'
 
 export default class EmgLabel extends ResourceLabel {
 
     public static fromTemplate (tpl: AnnotationLabelTemplate) {
-        return new EmgLabel(
-            tpl.value,
-            tpl.label, tpl.class, tpl.codes, tpl.priority, tpl.text, tpl.visible
-        )
+        return new EmgLabel(tpl.value, {
+            annotator: tpl.annotator || undefined,
+            class: tpl.class || undefined,
+            codes: tpl.codes || undefined,
+            label: tpl.label || undefined,
+            priority: tpl.priority || undefined,
+            text: tpl.text || undefined,
+            visible: tpl.visible || undefined,
+        })
     }
 
     constructor (
         // Required properties:
-        value: boolean | number | number[] | string | string[],
+        value: boolean | number | number[] | string | string[] | null,
         // Optional properties:
-        label?: string, labelClass?: AnnotationLabel['class'], codes?: (number | string)[], priority?: number, text?: string,
-        visible?: boolean
+        options?: AnnotationOptions
     ) {
-        super(
-            'EmgLabel', value,
-            label, labelClass, codes, priority, text, visible
-        )
+        super(SCOPE, value, options)
     }
 }
