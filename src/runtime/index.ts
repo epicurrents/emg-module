@@ -14,11 +14,11 @@ import type {
 } from '@epicurrents/core/dist/types'
 import type { EmgResource } from '#types'
 import EmgRecording from '../EmgRecording'
+import { safeObjectFrom } from '@epicurrents/core/dist/util'
 
 const SCOPE = 'emg-runtime-module'
 
-const EMG: SafeObject & RuntimeResourceModule = {
-    __proto__: null,
+const EMG = safeObjectFrom({
     moduleName: {
         code: 'emg',
         full: 'Electromyography',
@@ -92,5 +92,5 @@ const EMG: SafeObject & RuntimeResourceModule = {
             logInvalidMutation(property, value, SCOPE, "Unknown property.")
         }
     },
-}
+} as SafeObject & RuntimeResourceModule)
 export default EMG
