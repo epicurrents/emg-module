@@ -12,7 +12,6 @@ import type {
     EmgResource,
     EmgStudyContext,
 } from '#types'
-import { secondsToTimeString, timePartsToShortString } from '@epicurrents/core/dist/util'
 import EmgSourceChannel from '#components/EmgSourceChannel'
 import { AssetEvents, BiosignalResourceEvents } from '@epicurrents/core/dist/events'
 import { EmgEvents } from '#events'
@@ -213,24 +212,8 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         if (props.size) {
             return props
         } else if (this.state === 'ready') {
-            props.set(
-                this._channels.length.toString(),
-                {
-                    icon: 'wave',
-                    n: this._channels.length,
-                    title: this._channels.length === 1 ? '1 signal' : '{n} signals'
-                }
-            )
-            const timeParts = secondsToTimeString(this._totalDuration, true) as number[]
-            const timeShort = timePartsToShortString(timeParts)
-            props.set(
-                timeShort,
-                {
-                    icon: 'time',
-                    t: Math.floor(this._totalDuration) + ' seconds',
-                    title: 'Duration: {t}',
-                }
-            )
+            props.set('duration', this._totalDuration)
+            props.set('signals', this._channels.length)
         }
         return props
     }
