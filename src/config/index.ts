@@ -14,10 +14,6 @@ const emgSettings: EmgModuleSettings = {
         ignorePatterns: [] as string[],
     },
     filterPaddingSeconds: 0.1,
-    labels: {
-        convertPatterns: [] as [string, AnnotationLabel][],
-        ignorePatterns: [] as string[],
-    },
     showHiddenChannels: false,
     showMissingChannels: false,
     unloadOnClose: false,
