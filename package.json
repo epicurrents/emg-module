@@ -50,7 +50,7 @@
   "author": "Sampsa Lohi",
   "license": "Apache-2.0",
   "dependencies": {
-    "@epicurrents/core": "^0.3.0-2",
+    "@epicurrents/core": "^0.3.0",
     "axios": "^1.6.2",
     "scoped-event-bus": "^0.2.2",
     "scoped-event-log": "^3.0.0"
