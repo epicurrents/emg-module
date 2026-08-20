@@ -18,7 +18,7 @@ export default class EmgEvent extends GenericBiosignalEvent {
 
     public static fromTemplate (tpl: AnnotationEventTemplate) {
         return new EmgEvent(
-            tpl.start, tpl.duration, tpl.label || '',
+            tpl.start, tpl.duration, GenericBiosignalEvent.labelFromTemplate(tpl),
             {
                 annotator: tpl.annotator || undefined,
                 background: tpl.background || undefined,
