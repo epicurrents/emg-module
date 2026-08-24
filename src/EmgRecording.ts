@@ -74,7 +74,7 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
     protected _isAudioPlaying = false
     protected _samplingRate: number | null = null
     protected _service: EmgService | null = null
-    #SETTINGS = (window.__EPICURRENTS__?.RUNTIME?.SETTINGS.modules.eeg as EmgModuleSettings) || null
+    #SETTINGS = (window.__EPICURRENTS__?.RUNTIME?.SETTINGS.modules.emg as EmgModuleSettings) || null
     /**
      * Create a new EMG recording.
      * @param name - Recording name; this will be displayed in the UI.
