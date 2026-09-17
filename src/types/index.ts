@@ -1,4 +1,4 @@
-import type { BaseModuleSettings, BiosignalDataService, BiosignalResource, CommonBiosignalSettings, StudyContext } from "@epicurrents/core/dist/types"
+import type { BaseModuleSettings, BiosignalDataService, BiosignalResource, CommonBiosignalSettings, StudyContext } from "@epicurrents/core/types"
 
 export interface EmgDataService extends BiosignalDataService {
 

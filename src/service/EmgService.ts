@@ -6,7 +6,7 @@
  */
 
 import { GenericBiosignalService } from '@epicurrents/core'
-import type { StudyContext, WorkerResponse } from '@epicurrents/core/dist/types'
+import type { StudyContext, WorkerResponse } from '@epicurrents/core/types'
 import type { EmgDataService, EmgResource, SetupEmgWorkerResponse } from '#types'
 //import { Log } from 'scoped-event-log'
 

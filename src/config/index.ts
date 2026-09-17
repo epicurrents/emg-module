@@ -5,7 +5,7 @@
  * @license    Apache-2.0
  */
 
-import type { BiosignalAnnotationEvent } from '@epicurrents/core/dist/types'
+import type { BiosignalAnnotationEvent } from '@epicurrents/core/types'
 import type { EmgModuleSettings } from '#types'
 
 const emgSettings: EmgModuleSettings = {

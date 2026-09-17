@@ -13,7 +13,7 @@ import type {
     EmgStudyContext,
 } from '#types'
 import EmgSourceChannel from '#components/EmgSourceChannel'
-import { AssetEvents, BiosignalResourceEvents } from '@epicurrents/core/dist/events'
+import { AssetEvents, BiosignalResourceEvents } from '@epicurrents/core/events'
 import { EmgEvents } from '#events'
 import { Log } from 'scoped-event-log'
 //import { Log } from 'scoped-event-log'

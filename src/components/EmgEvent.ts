@@ -10,7 +10,7 @@ import type {
     AnnotationEventTemplate,
     BiosignalAnnotationEventOptions,
     SettingsColor,
-} from '@epicurrents/core/dist/types'
+} from '@epicurrents/core/types'
 
 //const SCOPE = 'EmgEvent'
 
