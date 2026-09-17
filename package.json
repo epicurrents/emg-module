@@ -18,23 +18,16 @@
     "./dist/runtime": "./dist/runtime/index.js",
     "./dist/types": "./dist/types/index.d.ts"
   },
-  "imports": {
-    "#runtime*": "./dist/src/runtime/index.ts",
-    "#*": "./dist/*"
-  },
   "files": [
     "dist/*",
-    "umd/*.js",
-    "umd/*.LICENSE.txt",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
-    "build": "npm run build:umd && npm run build:tsc",
-    "build:tsc": "tsc && tsconfig-replace-paths --project tsconfig.paths.json && npm run copy:json",
-    "build:umd": "webpack --progress --config webpack.config.js",
-    "copy:json": "node copy-json.js",
-    "dev": "webpack serve --progress --config webpack.dev.js",
+    "build": "npm run build:tsc",
+    "build:lib": "vite build",
+    "build:tsc": "npm run build:lib && npm run build:types",
+    "build:types": "epicurrents-build-types",
     "lint": "npm run lint:src",
     "lint:src": "eslint src",
     "prepack": "npm run build",
@@ -55,17 +48,12 @@
     "@epicurrents/core": "^1.0.0",
     "@eslint/js": "^9.18.0",
     "@microsoft/tsdoc": "^0.14.1",
-    "circular-dependency-plugin": "^5.2.2",
     "dotenv": "^16.3.1",
     "eslint": "^9.18.0",
     "scoped-event-log": "^3.2.0",
-    "ts-loader": "^9.5.1",
-    "tsconfig-replace-paths": "^0.0.14",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.20.0",
-    "webpack": "^5.73.0",
-    "webpack-bundle-analyzer": "^4.10.1",
-    "webpack-cli": "^5.1.4"
+    "vite": "^7.3.1"
   },
   "peerDependencies": {
     "@epicurrents/core": "^1.0.0",
