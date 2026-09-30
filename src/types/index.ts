@@ -1,12 +1,29 @@
-import type { BaseModuleSettings, BiosignalDataService, BiosignalResource, CommonBiosignalSettings, StudyContext } from "@epicurrents/core/types"
+/**
+ * Epicurrents EMG module types.
+ * @package    epicurrents/emg-module
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
+ */
 
+import type {
+    BaseModuleSettings,
+    BiosignalDataService,
+    BiosignalResource,
+    CommonBiosignalSettings,
+    StudyContext,
+} from '@epicurrents/core/types'
+
+/**
+ * Data service of an EMG resource. The modality adds no members of its own to the base service;
+ * the alias exists so a consumer names the service it holds rather than the generic one, and so a
+ * future EMG-only method has a declaration site that is already imported everywhere.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- named seam, see above.
 export interface EmgDataService extends BiosignalDataService {
-
 }
 
-export type EmgModuleSettings = BaseModuleSettings & CommonBiosignalSettings & {
-
-}
+/** Settings of the EMG module. The modality adds no settings of its own to the common biosignal set. */
+export type EmgModuleSettings = BaseModuleSettings & CommonBiosignalSettings
 
 export interface EmgResource extends BiosignalResource {
     /** Is audio playback currently active. */
@@ -37,7 +54,7 @@ export interface EmgResource extends BiosignalResource {
     setAudioGain (gain: number): void
     /**
      * Set the audio signals for playback.
-     * @param length - Length of the signals in samples.
+     * @param length - Length of the signals in seconds.
      * @param samplingRate - Sampling rate of the signals in Hz.
      * @param signals - One or more Float32Array containing the audio signals for each channel.
      */

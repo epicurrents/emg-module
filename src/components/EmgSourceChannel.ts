@@ -8,9 +8,7 @@
 import { GenericSourceChannel } from '@epicurrents/core'
 import type { BiosignalChannel } from '@epicurrents/core/types'
 
-//const SCOPE = 'EmgSourceChannel'
-
-export default class EmgSourceChannel extends GenericSourceChannel implements GenericSourceChannel {
+export default class EmgSourceChannel extends GenericSourceChannel {
 
     constructor (
         name: string, label: string, index: number, samplingRate: number, visible: boolean,

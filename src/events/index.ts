@@ -21,7 +21,7 @@ export enum EmgEvents {
     AUDIO_PLAYBACK_STOPPED = 'emg-audio-playback-stopped',
 }
 
-export type EmgEvent = {
+export type EmgModuleEvent = {
     /** EMG audio playback has ended due to reaching the end of the recording. */
     [EmgEvents.AUDIO_PLAYBACK_ENDED]: BroadcastStateEvent
     /** EMG audio playback is paused at the given position. */
