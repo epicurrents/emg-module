@@ -1,0 +1,26 @@
+{
+  /*
+   * Type-check the test suite against the real `@epicurrents/core` types.
+   *
+   * The suite uses no test doubles for core: every case either constructs a real core class or calls
+   * a prototype method against a stub carrying only the members that method reads. That keeps this
+   * config plain — there is no mock directory whose types would have to be reconciled with the ones
+   * the package actually ships against.
+   */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,             /* No .d.ts files for tests. */
+    "noUnusedLocals": false,          /* A fixture may be built and not used in every case. */
+    "noUnusedParameters": false,
+    "types": ["node"],               /* Vitest's helpers are imported explicitly, not as globals. */
+    "typeRoots": ["../../node_modules/@types", "./node_modules/@types"],
+    "paths": {
+      "#*": ["src/*"],
+      "#root/*": ["./*"]
+    }
+  },
+  "include": ["./tests/**/*", "./src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

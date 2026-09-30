@@ -12,6 +12,8 @@ export default defineConfig({
         coverage: {
             provider: 'v8',
             reportsDirectory: 'tests/coverage',
+            // The suite is not a source of this package.
+            exclude: ['tests/**'],
         },
     },
 })
