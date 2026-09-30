@@ -38,19 +38,21 @@ export default class EmgStudyLoader extends GenericStudyLoader {
             return null
         }
         // Create a new resource from the loaded study.
-        if (!this._study.name) {
+        // The recording constructor reads the channel count, duration and sampling rate straight off
+        // `meta`; an absent value there yields a recording with no channels and no duration, which
+        // presents as an empty viewer rather than as a failed load. Refuse it instead.
+        const meta = this._study.meta as Partial<EmgStudyContext['meta']>
+        if (!this._study.name || typeof meta?.nChannels !== 'number' || typeof meta.samplingRate !== 'number') {
             Log.error(
-                `Cannot construct an EMG resource from given study context; it is missing required properties.`,
-            SCOPE)
+                `Cannot construct an EMG resource from given study context; ` +
+                `it is missing required properties (name / nChannels / samplingRate).`,
+                SCOPE,
+            )
             return null
         }
         const worker = this._studyImporter?.getFileTypeWorker('emg')
         if (!worker) {
             Log.error(`Study loader does not have a file worker.`, SCOPE)
-            return null
-        }
-        if (!worker) {
-            Log.error(`Study loader doesn't have a file type loader.`, SCOPE)
             return null
         }
         const emg = new EmgRecording(
@@ -78,7 +80,7 @@ export default class EmgStudyLoader extends GenericStudyLoader {
     public async loadFromUrl (
         fileUrl: string,
         config?: ConfigStudyLoader,
-        preStudy?: StudyContext | undefined
+        preStudy?: StudyContext
     ): Promise<StudyContext | null> {
         const context = await super.loadFromUrl(fileUrl, config, preStudy)
         if (!context) {
