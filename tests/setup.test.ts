@@ -87,6 +87,14 @@ describe('the memory budget', () => {
         expect(requestedFloats(context)).toBe(6 + 500*4 + BiosignalMutex.SIGNAL_DATA_POS)
     })
 
+    it('sizes a recording off the whole-second grid to the whole seconds the mutex lays out', async () => {
+        // The mutex stores its range in whole data units and lays its buffers out to match, from their
+        // starting index with nothing to stop them at the end of the allocation.
+        const context = makeContext({ _dataDuration: 7.3, channels: [{ samplingRate: 500 }] })
+        await completeSetup(context)
+        expect(requestedFloats(context)).toBe(6 + 500*8 + BiosignalMutex.SIGNAL_DATA_POS)
+    })
+
     it('scales with the sampling rate of each channel independently', async () => {
         const context = makeContext({ channels: [{ samplingRate: 1000 }, { samplingRate: 250 }] })
         await completeSetup(context)

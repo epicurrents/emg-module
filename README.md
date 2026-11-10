@@ -42,7 +42,7 @@ Three steps, in order, and the ordering matters at each boundary.
 
 ### The memory budget
 
-`_completeSetup` asks the memory manager for a float count, and that count has to match the layout the mutex writes: **one cell for the master lock plus five for the mutex meta fields** (`allocated`, `start`, `end`, `data_unit_duration`, `window_epoch`), then per channel its samples plus that channel's own meta header. The five meta fields are easy to forget because none of them is named in this package; they are `BiosignalMutex`'s, in core.
+`_completeSetup` asks the memory manager for a float count, and that count has to match the layout the mutex writes: **one cell for the master lock plus five for the mutex meta fields** (`allocated`, `start`, `end`, `data_unit_duration`, `window_epoch`), then per channel its samples plus that channel's own meta header. The five meta fields are easy to forget because none of them is named in this package; they are `BiosignalMutex`'s, in core. The samples cover `BiosignalMutex.coveredLength` of the recording rather than its own length: the mutex stores its range in whole data units, so a 7.3 s recording is laid out as 8 s, and a request for 7.3 s leaves the buffers running past the allocation.
 
 Audio playback
 --------------

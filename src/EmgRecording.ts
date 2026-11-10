@@ -203,11 +203,13 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         if (this._memoryManager) {
             // Floats the mutex needs for the whole recording: one cell for the master lock, five for
             // the mutex meta fields (allocated, start, end, data unit duration, window epoch), then
-            // per channel its samples plus that channel's own meta header.
+            // per channel its samples plus that channel's own meta header. The samples cover the whole data units
+            // the mutex lays out, not just the recording's own length.
             let totalMem = 6
             const dataFieldsLen = BiosignalMutex.SIGNAL_DATA_POS
+            const coveredLength = BiosignalMutex.coveredLength(this._dataDuration)
             for (const chan of this.channels) {
-                totalMem += chan.samplingRate*this._dataDuration + dataFieldsLen
+                totalMem += Math.ceil(chan.samplingRate*coveredLength) + dataFieldsLen
             }
             const memorySuccess = await this._service?.requestMemory(totalMem)
             if (!memorySuccess) {
