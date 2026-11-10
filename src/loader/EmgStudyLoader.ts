@@ -59,6 +59,7 @@ export default class EmgStudyLoader extends GenericStudyLoader {
             this._study.name,
             this._study,
             worker,
+            this._memoryManager || undefined,
         )
         emg.state = 'loaded'
         emg.source = this._study

@@ -300,3 +300,28 @@ describe('the playback state surface', () => {
         expect(dispatched).toEqual(['emg-audio-playback-ended', 'emg-audio-playback-stopped'])
     })
 })
+
+describe('the memory manager', () => {
+    // A host gives the study a reader in its own thread when `emg.useMemoryManager` is on, and that
+    // reader can serve only a shared cache. Without the manager the recording commissioned a plain
+    // cache it could never read, and every draw asked for an empty range.
+    const manager = {} as never
+
+    it('keeps the manager it is given while the module uses shared memory', () => {
+        const recording = new EmgRecording('rec', study(), workerStub(), manager)
+        expect((recording as unknown as { _memoryManager: unknown })._memoryManager).toBe(manager)
+    })
+
+    it('hands the manager to its service', () => {
+        const recording = new EmgRecording('rec', study(), workerStub(), manager)
+        const service = (recording as unknown as { _service: { _manager: unknown } })._service
+        expect(service._manager).toBe(manager)
+    })
+
+    it('leaves the manager unused when the module does not use shared memory', () => {
+        removeRuntimeGlobal()
+        removeRuntimeGlobal = installRuntimeGlobal({ useMemoryManager: false })
+        const recording = new EmgRecording('rec', study(), workerStub(), manager)
+        expect((recording as unknown as { _memoryManager: unknown })._memoryManager).toBeNull()
+    })
+})

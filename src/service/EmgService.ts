@@ -6,7 +6,7 @@
  */
 
 import { GenericBiosignalService } from '@epicurrents/core'
-import type { StudyContext, WorkerResponse } from '@epicurrents/core/types'
+import type { MemoryManager, StudyContext, WorkerResponse } from '@epicurrents/core/types'
 import type { EmgDataService, EmgResource, SetupEmgWorkerResponse } from '#types'
 import { Log } from 'scoped-event-log'
 
@@ -18,8 +18,8 @@ export default class EmgService extends GenericBiosignalService implements EmgDa
         return this._worker
     }
 
-    constructor (recording: EmgResource, worker: Worker) {
-        super(recording, worker)
+    constructor (recording: EmgResource, worker: Worker, manager?: MemoryManager) {
+        super(recording, worker, manager)
         // The listener slot is synchronous while the handler is not, so the rejection has to be
         // caught here; unhandled, a malformed worker message would be reported nowhere.
         this._worker?.addEventListener('message', (message: MessageEvent) => {

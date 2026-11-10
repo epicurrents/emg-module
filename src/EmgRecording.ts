@@ -7,6 +7,7 @@
 
 import { BiosignalAudio, BiosignalMutex, GenericBiosignalResource } from '@epicurrents/core'
 import EmgService from '#service/EmgService'
+import type { MemoryManager } from '@epicurrents/core/types'
 import type {
     EmgModuleSettings,
     EmgResource,
@@ -92,9 +93,15 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
      * @param name - Recording name; this will be displayed in the UI.
      * @param source - Recording source as a study context.
      * @param worker - Worker for the EMG service.
+     * @param memoryManager - Shared-memory manager; kept only while `emg.useMemoryManager` is on, the same setting that gives the study a reader worker that can only serve a shared cache.
      */
-    constructor (name: string, source?: EmgStudyContext, worker?: Worker) {
+    constructor (name: string, source?: EmgStudyContext, worker?: Worker, memoryManager?: MemoryManager) {
         super(name, 'emg', source)
+        // A reader in its own thread cannot hand over a main-thread cache, so a study given such a worker reaches its
+        // signals through shared memory or not at all.
+        if (memoryManager && this.#SETTINGS?.useMemoryManager) {
+            this.setMemoryManager(memoryManager)
+        }
         this._audio = new BiosignalAudio(name)
         // Unload on close if setting is enabled.
         this.addEventListener(AssetEvents.DEACTIVATE, () => {
@@ -135,7 +142,7 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         if (!worker) {
             return
         }
-        this._service = new EmgService(this, worker)
+        this._service = new EmgService(this, worker, this._memoryManager || undefined)
         this._state = 'loading'
         this._service.prepareWorker(source).then(response => {
             if (response) {

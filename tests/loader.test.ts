@@ -78,6 +78,15 @@ describe('getResource', () => {
         expect(context._resources.length).toBe(1)
     })
 
+    it('hands the recording the loader\'s memory manager', async () => {
+        // The worker the importer hands over reads into shared memory only; a recording built
+        // without the manager cannot read what that worker caches.
+        const manager = {}
+        const context = { ...makeContext(studyWith(completeMeta)), _memoryManager: manager }
+        const resource = await getResource(context) as { _memoryManager: unknown } | null
+        expect(resource?._memoryManager).toBe(manager)
+    })
+
     it('clears the loaded study once the recording is built', async () => {
         const context = makeContext(studyWith(completeMeta))
         await getResource(context)
