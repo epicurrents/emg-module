@@ -130,6 +130,27 @@ describe('the display mutations', () => {
     })
 })
 
+describe('the montage mutation', () => {
+    it('activates a montage by name and returns to the raw signals on null', () => {
+        const resource = makeResource({ activeMontage: null, setActiveMontage: vi.fn().mockResolvedValue(undefined) })
+        set('active-montage', 'cascade:ch_0', resource)
+        set('active-montage', null, resource)
+        expect(resource.setActiveMontage.mock.calls).toEqual([['cascade:ch_0'], [null]])
+    })
+
+    it('refuses a value that names no montage', () => {
+        const resource = makeResource({ activeMontage: null, setActiveMontage: vi.fn() })
+        set('active-montage', true, resource)
+        expect(resource.setActiveMontage).not.toHaveBeenCalled()
+    })
+
+    it('reports a rejected activation instead of leaving it unhandled', async () => {
+        const resource = makeResource({ activeMontage: null, setActiveMontage: vi.fn().mockRejectedValue(new Error('x')) })
+        set('active-montage', 0, resource)
+        await vi.waitFor(() => expect(errors().length).toBe(1))
+    })
+})
+
 describe('setPropertyValue', () => {
     it('reports a property the module does not own', () => {
         set('montage-colour', 'red', makeResource())

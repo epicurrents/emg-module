@@ -10,9 +10,9 @@ The runtime module handles `highpass-filter`, `lowpass-filter` and `notch-filter
 
 Half of the gap is closed. [src/config/index.ts](src/config/index.ts) now declares `filterChannelTypes: { emg: ['highpass', 'lowpass', 'notch'] }`, without which core's `getChannelFilters` would not propagate a recording-level default to an EMG channel even once a filtering path existed; that omission was the same one acc-module found and fixed for itself. The remaining half needs somewhere for the filtering to happen.
 
-Two shapes it could take, and they are not equivalent. A montage, following acc-module, gives EMG the whole montage machinery — filtering, derivations, cascade views — for a modality that has no montages in the clinical sense, one channel being one muscle. Filtering in the reader instead would suit the data but has no precedent in the family and would put a filter in a layer that currently serves raw signals to every modality. The decision is worth making explicitly rather than by whichever is easier when someone adds the control.
+The cascade montage closes it for the cascade view only. A cascade owns its display state, so a filter set while it is active lands on the montage, and its rows are filtered on the main thread before they are cut. The notch hotkey reaches that path; nothing else does, because `EmgControls.vue` still renders no filter control. The normal view reads raw signals through no montage and stays unfiltered.
 
-Until then, treat the three runtime branches and the three interface actions as declared and inert. `EmgControls.vue` renders no filter control, so nothing reaches them today.
+Two shapes remain for the normal view, and they are not equivalent. An as-recorded montage, following acc-module, would route the normal view through the montage worker too, for a modality that has no montages in the clinical sense, one channel being one muscle. Filtering in the reader instead would suit the data but has no precedent in the family and would put a filter in a layer that currently serves raw signals to every modality. The decision is worth making explicitly rather than by whichever is easier when someone adds the control. Until then, treat the filter branches as inert outside the cascade.
 
 ## The interface EMG module's lifecycle hooks are typed for documents
 

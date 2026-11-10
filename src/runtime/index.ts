@@ -54,7 +54,17 @@ const EMG = safeObjectFrom({
         if (!activeRes) {
             return
         }
-        if (property === 'highpass-filter') {
+        if (property === 'active-montage') {
+            if (typeof value !== 'string' && typeof value !== 'number' && value !== null) {
+                logInvalidMutation(property, value, SCOPE)
+                return
+            }
+            if (activeRes.activeMontage !== undefined) {
+                activeRes.setActiveMontage(value).catch((e: unknown) => {
+                    Log.error(`Setting the active montage failed.`, SCOPE, asError(e))
+                })
+            }
+        } else if (property === 'highpass-filter') {
             if (typeof value !== 'number' || value < 0) {
                 logInvalidMutation(property, value, SCOPE, 'Value must be a positive number.')
                 return

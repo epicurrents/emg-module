@@ -26,6 +26,14 @@ export interface EmgDataService extends BiosignalDataService {
 export type EmgModuleSettings = BaseModuleSettings & CommonBiosignalSettings
 
 export interface EmgResource extends BiosignalResource {
+    /**
+     * Add a cascade montage for every source channel, named `cascade:<channel name>` and labelled with the channel's
+     * label. A channel that already has one keeps it. Must be called after the signal buffer is set up.
+     * @param rowCount - Number of stacked rows.
+     * @param pageLength - Initial length of one row in seconds; the display reassigns it to the page it draws.
+     * @returns Names of the cascade montages the recording now has, one per source channel that could be resolved.
+     */
+    addCascadeMontages (rowCount: number, pageLength: number): Promise<string[]>
     /** Is audio playback currently active. */
     isAudioPlaying: boolean
     /** EMG signal playback position in seconds. */

@@ -5,9 +5,11 @@
  * @license    Apache-2.0
  */
 
+import EmgCascadeMontage from '#components/EmgCascadeMontage'
 import EmgEvent from '#components/EmgEvent'
 import { EmgEvents } from '#events'
 import EmgLabel from '#components/EmgLabel'
+import EmgMontageChannel from '#components/EmgMontageChannel'
 import EmgRecording from './EmgRecording'
 import EmgService from '#service/EmgService'
 import EmgSourceChannel from '#components/EmgSourceChannel'
@@ -18,9 +20,11 @@ import settings from './config'
 const modality = 'emg'
 
 export {
+    EmgCascadeMontage,
     EmgEvent,
     EmgEvents,
     EmgLabel,
+    EmgMontageChannel,
     EmgRecording,
     EmgService,
     EmgSourceChannel,

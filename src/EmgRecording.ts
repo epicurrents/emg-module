@@ -5,14 +5,15 @@
  * @license    Apache-2.0
  */
 
-import { BiosignalAudio, BiosignalMutex, GenericBiosignalResource } from '@epicurrents/core'
+import { BiosignalAudio, BiosignalMutex, GenericBiosignalResource, GenericBiosignalSetup } from '@epicurrents/core'
 import EmgService from '#service/EmgService'
-import type { MemoryManager } from '@epicurrents/core/types'
+import type { BiosignalSetup, MemoryManager, SetupChannel } from '@epicurrents/core/types'
 import type {
     EmgModuleSettings,
     EmgResource,
     EmgStudyContext,
 } from '#types'
+import EmgCascadeMontage from '#components/EmgCascadeMontage'
 import EmgSourceChannel from '#components/EmgSourceChannel'
 import { AssetEvents, BiosignalResourceEvents } from '@epicurrents/core/events'
 import { EmgEvents } from '#events'
@@ -253,6 +254,68 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 ...signals.signals.map(s => s.data)
             )
         }
+    }
+
+    protected override _constructCascadeMontage (
+        name: string,
+        setup: BiosignalSetup,
+        sourceLabel: string,
+        rowCount: number,
+        pageLength: number,
+        config?: { label: string },
+    ) {
+        return new EmgCascadeMontage(
+            name, this, setup, sourceLabel, rowCount, pageLength,
+            this._memoryManager || undefined, config,
+        )
+    }
+
+    /**
+     * The setup the recording's montages resolve their channels against: one setup channel per source channel, in
+     * source order, so a setup channel's index is the source signal's index in the cache. Built on first use and kept,
+     * since the source channels do not change after the recording is constructed.
+     */
+    protected _sourceSetup (): BiosignalSetup {
+        if (this._setup) {
+            return this._setup
+        }
+        const setup = new GenericBiosignalSetup('emg')
+        setup.channels = this._channels.map((ch, idx): SetupChannel => ({
+            active: idx,
+            averaged: false,
+            displayPolarity: 0,
+            index: idx,
+            label: ch.label,
+            laterality: ch.laterality,
+            modality: ch.modality,
+            name: ch.name,
+            reference: [],
+            samplingRate: ch.samplingRate,
+            scale: 0,
+            unit: ch.unit,
+        }))
+        this.setup = setup
+        return setup
+    }
+
+    async addCascadeMontages (rowCount: number, pageLength: number): Promise<string[]> {
+        if (!this._channels.length) {
+            return []
+        }
+        const setup = this._sourceSetup()
+        const added: string[] = []
+        for (const chan of setup.channels) {
+            const name = `cascade:${chan.name}`
+            if (this.montages.some(m => m.name === name)) {
+                added.push(name)
+                continue
+            }
+            const created = await this.addCascadeMontage(name, chan.label, setup, chan.name, rowCount, pageLength)
+            if (created) {
+                added.push(name)
+            }
+        }
+        return added
     }
 
     destroy (): Promise<void> {

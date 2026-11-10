@@ -20,6 +20,8 @@ Public surface
 | Export | What it is |
 |---|---|
 | `EmgRecording` | The biosignal resource. Owns the channels, the signal cache and the audio asset. |
+| `EmgCascadeMontage` | The cascade view of one channel, described under [the cascade](#the-cascade). |
+| `EmgMontageChannel` | A montage row, keeping the `emg` modality on every row a cascade cuts. |
 | `EmgStudyLoader` | Turns a loaded study into an `EmgRecording`, narrowing the study to the `emg` modality. |
 | `EmgService` | Commissions and drives the reader worker. |
 | `EmgSourceChannel` | A source channel fixed to the `emg` modality and microvolt units. |
@@ -62,6 +64,15 @@ Two numbers in this path are worth knowing before changing them. `setAudioSignal
 
 The gain follows the sensitivity: the recording watches its own `sensitivity` property and rescales the audio by `1e-6 / sensitivity`, so the trace and the sound stay in step.
 
+The cascade
+-----------
+
+`addCascadeMontages(rowCount, pageLength)` gives every source channel a cascade montage, named `cascade:<channel name>` and labelled with the channel's label, and keeps one a channel already has. Activating it with `setActiveMontage` makes `getAllSignals` answer one row per stacked page: row `i` starts `i` pages after the view start, so a page turn moves the view by the whole stack, `pageStep`. The cascade reads the source through the raw-signal path and cuts it on the main thread, as core's cascade does, so with shared memory it is refused until the recording's buffer is set up.
+
+What sets it apart from core's other cascades is the timebase. Core's cascade locks the timebase unit to sec/page and keeps the row length as its own `pageLength`, which is the whole of an EEG timebase. An EMG timebase is ms/div, and what one page spans in seconds depends on how many divisions the display is wide, which this package cannot know. `EmgCascadeMontage` therefore sets no timebase unit: the recording keeps its ms/div timebase, a timebase change never reaches the montage, and the display assigns `pageLength` from the page it draws. `rowCount` is settable on it, and an assignment rebuilds the rows in place.
+
+The recording has no setup of its own until the first cascade asks for one: `_sourceSetup` builds it from the source channels in source order, which is what makes a setup channel's index the source signal's index in the cache.
+
 Annotations
 -----------
 
@@ -72,7 +83,7 @@ Settings
 
 The module ships the common biosignal settings with no EMG-specific additions, and two of the defaults carry a decision:
 
-- **`filterChannelTypes: { emg: […] }`** is what makes a recording-level filter default reach an EMG channel at all. Core's `getChannelFilters` propagates a default only to channels whose modality is listed there, so an omitted entry leaves every channel on its own zero. Note the limit of what declaring it buys: signals are filtered in core's `MontageProcessor`, this module defines no montage, and so **an EMG recording is not filtered today** whatever the setting says. See [ROADMAP.md](ROADMAP.md).
+- **`filterChannelTypes: { emg: […] }`** is what makes a recording-level filter default reach an EMG channel at all. Core's `getChannelFilters` propagates a default only to channels whose modality is listed there, so an omitted entry leaves every channel on its own zero. Note the limit of what declaring it buys: the raw signals are filtered nowhere, and the one montage this module defines, [the cascade](#the-cascade), filters only its own rows. See [ROADMAP.md](ROADMAP.md).
 - **`unloadOnClose: false`**, for the reason given under the lifecycle above.
 
 Licence
