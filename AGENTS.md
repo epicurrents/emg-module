@@ -48,17 +48,17 @@ Three slots in this package take a callback whose return value is discarded, and
 
 | Site | What is caught |
 |---|---|
-| `ACTIVATE` listener in `EmgRecording` | `_completeSetup`, which also sets an error state so the failure is visible on the resource. |
+| `ACTIVATE` listener in `EmgRecording` | The load it awaits and `_completeSetup`, which also sets an error state so the failure is visible on the resource. |
 | `DEACTIVATE` listener in `EmgRecording` | `unload`, whose failure otherwise leaves the recording holding its memory silently. |
 | `message` listener in `EmgService` | `handleMessage`, which is async while the listener slot is not. |
 
-The `.then` on `prepareWorker` needs its `.catch` for the same reason: without it a rejection leaves the recording in `loading` for the rest of the session with nothing said about why.
+`_load` catches a rejected `prepareWorker` itself and resolves false with a reason, so core's load leaves the recording in `error` with the cause logged rather than as a generic failure.
 
 When adding a branch to the runtime module, note that core's three filter setters are `async`. A branch that calls one without a catch is a floating promise; `@typescript-eslint/no-floating-promises` is on and will say so.
 
 ## Two paths build the channels, and they must agree
 
-`EmgRecording`'s constructor builds channels from `source.meta.nChannels`; `EmgRecording.fromSerialized` builds them from the template's channel list, keeping every channel that carries a signal. **Neither path may truncate.** They disagreed once — the deserialiser kept one channel — which meant a recording's channel count depended on whether it had been through a serialisation round trip.
+`EmgRecording._readSource` builds channels from `source.meta.nChannels`, from the constructor for a study already read and from `_load` for a listed one; `EmgRecording.fromSerialized` builds them from the template's channel list, keeping every channel that carries a signal. **Neither path may truncate.** They disagreed once — the deserialiser kept one channel — which meant a recording's channel count depended on whether it had been through a serialisation round trip.
 
 The fallback names and labels are positional: `channel_<i>` and `Ch <i+1>`, indexed over every mapped channel rather than over the unnamed ones, so a named channel still advances its neighbours' numbering.
 

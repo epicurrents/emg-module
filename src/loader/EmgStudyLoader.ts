@@ -11,6 +11,7 @@ import type {
     FileFormatImporter,
     FileSystemItem,
     StudyContext,
+    StudyListing,
 } from '@epicurrents/core/types'
 import { EmgRecording } from '..'
 import type { EmgResource, EmgStudyContext } from '#types'
@@ -30,6 +31,25 @@ export default class EmgStudyLoader extends GenericStudyLoader {
         return 'emg'
     }
 
+    /**
+     * The importer's EMG worker. A recording asks for it when it loads, not when it is created.
+     */
+    protected _getFileWorker () {
+        return this._studyImporter?.getFileTypeWorker('emg') ?? null
+    }
+
+    createListedResource (listing: StudyListing) {
+        const emg = new EmgRecording(
+            listing.name,
+            undefined,
+            () => this._getFileWorker(),
+            this._memoryManager || undefined,
+        )
+        // Kept out of `_resources`: that list is what a read study's resource is found in by index, and a listing
+        // entered between a read and its `getResource` would take the read study's place.
+        return emg
+    }
+
     async getResource (idx: number | string = -1): Promise<EmgResource | null> {
         const loaded = await super.getResource(idx)
         if (loaded) {
@@ -37,12 +57,9 @@ export default class EmgStudyLoader extends GenericStudyLoader {
         } else if (!this._study) {
             return null
         }
-        // Create a new resource from the loaded study.
-        // The recording constructor reads the channel count, duration and sampling rate straight off
-        // `meta`; an absent value there yields a recording with no channels and no duration, which
-        // presents as an empty viewer rather than as a failed load. Refuse it instead.
-        const meta = this._study.meta as Partial<EmgStudyContext['meta']>
-        if (!this._study.name || typeof meta?.nChannels !== 'number' || typeof meta.samplingRate !== 'number') {
+        // Create a new resource from the loaded study. The recording reads the channel count, duration and sampling
+        // rate straight off `meta`, so a study missing them is refused here rather than presenting as an empty viewer.
+        if (!EmgRecording.isCompleteStudy(this._study)) {
             Log.error(
                 `Cannot construct an EMG resource from given study context; ` +
                 `it is missing required properties (name / nChannels / samplingRate).`,
@@ -50,19 +67,14 @@ export default class EmgStudyLoader extends GenericStudyLoader {
             )
             return null
         }
-        const worker = this._studyImporter?.getFileTypeWorker('emg')
-        if (!worker) {
-            Log.error(`Study loader does not have a file worker.`, SCOPE)
-            return null
-        }
+        // Built unloaded, as a listed recording is: the loader that opened the study loads it straight after.
         const emg = new EmgRecording(
             this._study.name,
             this._study,
-            worker,
+            () => this._getFileWorker(),
             this._memoryManager || undefined,
         )
         emg.state = 'loaded'
-        emg.source = this._study
         this._resources.push(emg)
         // Clear the loaded study.
         this._study = null

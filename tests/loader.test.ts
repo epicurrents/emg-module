@@ -126,19 +126,33 @@ describe('getResource', () => {
         expect(context._studyImporter.getFileTypeWorker).not.toHaveBeenCalled()
     })
 
-    it('refuses when the importer offers no worker', async () => {
-        const context = {
-            ...makeContext(studyWith(completeMeta)),
-            _studyImporter: { getFileTypeWorker: vi.fn(() => null as unknown as Worker) },
-        }
-        expect(await getResource(context)).toBe(null)
-        expect(refusalMessages().some(m => m.includes('file worker'))).toBe(true)
+    it('builds the recording unloaded, asking for no worker', async () => {
+        const context = makeContext(studyWith(completeMeta))
+        const resource = await getResource(context) as { state: string } | null
+        expect(resource?.state).toBe('loaded')
+        expect(context._studyImporter.getFileTypeWorker).not.toHaveBeenCalled()
     })
 
-    it('asks the importer for an EMG worker specifically', async () => {
-        const context = makeContext(studyWith(completeMeta))
-        await getResource(context)
-        expect(context._studyImporter.getFileTypeWorker).toHaveBeenCalledWith('emg')
+    it('asks the importer for an EMG worker specifically when the recording loads', async () => {
+        const loader = new EmgStudyLoader('EmgWavLoader', { getFileTypeWorker: vi.fn(() => null) } as never)
+        ;(loader as unknown as { _study: EmgStudyContext })._study = studyWith(completeMeta)
+        const resource = await loader.getResource()
+        expect(await resource?.load()).toBe(false)
+        expect(loader.studyImporter?.getFileTypeWorker).toHaveBeenCalledWith('emg')
+        expect(resource?.errorReason).toBe('No file worker')
+    })
+})
+
+describe('createListedResource', () => {
+    it('creates an EMG recording that has read nothing and started no worker', () => {
+        const importer = { getFileTypeWorker: vi.fn(workerStub) }
+        const loader = new EmgStudyLoader('EmgWavLoader', importer as never)
+        const resource = loader.createListedResource({ loader: 'emg', name: 'Listed', source: 'blob:emg' })
+        expect(resource.modality).toBe('emg')
+        expect(resource.name).toBe('Listed')
+        expect(resource.state).toBe('added')
+        expect(resource.channels.length).toBe(0)
+        expect(importer.getFileTypeWorker).not.toHaveBeenCalled()
     })
 })
 

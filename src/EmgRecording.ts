@@ -7,7 +7,7 @@
 
 import { BiosignalAudio, BiosignalMutex, GenericBiosignalResource, GenericBiosignalSetup } from '@epicurrents/core'
 import EmgService from '#service/EmgService'
-import type { BiosignalSetup, MemoryManager, SetupChannel } from '@epicurrents/core/types'
+import type { BiosignalSetup, ConfigStudyLoader, MemoryManager, SetupChannel } from '@epicurrents/core/types'
 import type {
     EmgModuleSettings,
     EmgResource,
@@ -84,20 +84,40 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         return resource
     }
 
+    /**
+     * Whether *study* carries what a recording is built from: a name, a channel count and a sampling rate. A study
+     * missing them yields a recording with no channels and no duration, which shows as an empty viewer rather than as
+     * a failed load.
+     * @param study - The study context to check.
+     */
+    static readonly isCompleteStudy = (study: EmgStudyContext) => {
+        const meta = study.meta as Partial<EmgStudyContext['meta']> | undefined
+        return !!study.name && typeof meta?.nChannels === 'number' && typeof meta.samplingRate === 'number'
+    }
+
     protected _audio: BiosignalAudio
+    /** Gives the worker the service runs on, asked for only when the recording loads. */
+    protected _getWorker: (() => Worker | null) | null
     protected _isAudioPlaying = false
     protected _samplingRate: number | null = null
     protected _service: EmgService | null = null
     #SETTINGS = (window.__EPICURRENTS__?.RUNTIME?.SETTINGS.modules.emg as EmgModuleSettings) || null
     /**
-     * Create a new EMG recording.
+     * Create a new EMG recording. It starts no worker: the service is created and set up when the recording loads,
+     * and the signal cache when it is first activated after that.
      * @param name - Recording name; this will be displayed in the UI.
-     * @param source - Recording source as a study context.
-     * @param worker - Worker for the EMG service.
+     * @param source - Recording source as a study context; absent for a listed recording until its study is read.
+     * @param getWorker - Gives the worker for the EMG service when the recording loads; without one it has no service.
      * @param memoryManager - Shared-memory manager; kept only while `emg.useMemoryManager` is on, the same setting that gives the study a reader worker that can only serve a shared cache.
      */
-    constructor (name: string, source?: EmgStudyContext, worker?: Worker, memoryManager?: MemoryManager) {
+    constructor (
+        name: string,
+        source?: EmgStudyContext,
+        getWorker?: () => Worker | null,
+        memoryManager?: MemoryManager
+    ) {
         super(name, 'emg', source)
+        this._getWorker = getWorker ?? null
         // A reader in its own thread cannot hand over a main-thread cache, so a study given such a worker reaches its
         // signals through shared memory or not at all.
         if (memoryManager && this.#SETTINGS?.useMemoryManager) {
@@ -125,45 +145,19 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
             this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_ENDED)
             this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_STOPPED)
         })
-        if (!source) {
-            return
-        }
-        for (let i = 0; i < source.meta.nChannels; i++) {
-            this._channels.push(new EmgSourceChannel(
-                `ch_${i}`,
-                `EMG ${i+1}`,
-                i,
-                source.meta.samplingRate || 0,
-                true,
-            ))
-        }
-        this._dataDuration = source.meta.duration || 0
-        this._totalDuration = this._dataDuration // EMG recordings are continuous.
-        this._samplingRate = source.meta.samplingRate || 0
-        if (!worker) {
-            return
-        }
-        this._service = new EmgService(this, worker, this._memoryManager || undefined)
-        this._state = 'loading'
-        this._service.prepareWorker(source).then(response => {
-            if (response) {
-                this._state = 'ready'
-            } else {
-                this._errorReason = 'Preparing worker failed'
-                this._state = 'error'
-            }
-        }).catch((e: unknown) => {
-            // The rejection has no other handler, and an unreported one leaves the recording
-            // in `loading` for the rest of the session.
-            Log.error(`Preparing the EMG worker failed.`, SCOPE, asError(e))
-            this._errorReason = 'Preparing worker failed'
-            this._state = 'error'
-        })
         this.addEventListener(AssetEvents.ACTIVATE, () => {
-            // The listener slot is synchronous, so the setup's failure has to be caught here or it
-            // surfaces as an unhandled rejection with the recording left half set up and nothing
-            // said about it.
-            this._completeSetup().catch((e: unknown) => {
+            // Activation loads a recording that has a study to load from and has not loaded yet, and the cache is
+            // commissioned only once that load has succeeded. The listener slot is synchronous, so the setup's failure
+            // has to be caught here or it surfaces as an unhandled rejection with the recording left half set up and
+            // nothing said about it.
+            if (!this._source && !this.isListed) {
+                return
+            }
+            this.load().then(async loaded => {
+                if (loaded && this.isActive) {
+                    await this._completeSetup()
+                }
+            }).catch((e: unknown) => {
                 Log.error(`Completing setup of the EMG recording failed.`, SCOPE, asError(e))
                 this.state = 'error'
                 this.errorReason = 'Completing setup failed'
@@ -172,6 +166,9 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 this.isActive = false
             })
         }, this.id)
+        if (source) {
+            this._readSource(source)
+        }
     }
 
     get _sensitivityGain () {
@@ -197,7 +194,7 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
      * caller that cannot see this promise still learns the outcome from the resource.
      */
     protected async _completeSetup () {
-        if (this._service?.isReady || this._state !== 'ready') {
+        if (!this._service || this._service.isReady || this._state !== 'ready') {
             return
         }
         this.dispatchEvent(EmgRecording.EVENTS.INITIAL_SETUP, 'before')
@@ -254,6 +251,58 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 ...signals.signals.map(s => s.data)
             )
         }
+    }
+
+    /**
+     * Create the service and set its worker up on the study in `_source`, which is what the recording loads with. A
+     * listed recording also builds its channels here, from the study its listing read.
+     */
+    protected async _load (_options?: ConfigStudyLoader) {
+        const source = this._source as EmgStudyContext | null
+        if (!source || !EmgRecording.isCompleteStudy(source)) {
+            Log.error(`Cannot load the EMG recording ${this.name}; its study is missing required properties.`, SCOPE)
+            this._errorReason = 'Recording study is incomplete'
+            return false
+        }
+        if (!this._channels.length) {
+            this._readSource(source)
+        }
+        if (!this._service) {
+            const worker = this._getWorker?.() ?? null
+            if (!worker) {
+                Log.error(`Cannot load the EMG recording ${this.name}; there is no file worker for it.`, SCOPE)
+                this._errorReason = 'No file worker'
+                return false
+            }
+            this._service = new EmgService(this, worker, this._memoryManager || undefined)
+        }
+        try {
+            if (await this._service.prepareWorker(source)) {
+                return true
+            }
+        } catch (e: unknown) {
+            Log.error(`Preparing the EMG worker failed.`, SCOPE, asError(e))
+        }
+        this._errorReason = 'Preparing worker failed'
+        return false
+    }
+
+    /**
+     * Build the channels and the durations from *source*'s metadata.
+     */
+    protected _readSource (source: EmgStudyContext) {
+        for (let i = 0; i < source.meta.nChannels; i++) {
+            this._channels.push(new EmgSourceChannel(
+                `ch_${i}`,
+                `EMG ${i+1}`,
+                i,
+                source.meta.samplingRate || 0,
+                true,
+            ))
+        }
+        this._dataDuration = source.meta.duration || 0
+        this._totalDuration = this._dataDuration // EMG recordings are continuous.
+        this._samplingRate = source.meta.samplingRate || 0
     }
 
     protected override _constructCascadeMontage (

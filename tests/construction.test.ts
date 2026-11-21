@@ -32,6 +32,9 @@ const workerStub = () => ({
     terminate: vi.fn(),
 } as unknown as Worker)
 
+/** Let the promise chains a load runs through settle. */
+const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+
 let removeRuntimeGlobal: () => void
 
 beforeEach(() => {
@@ -73,53 +76,100 @@ describe('the channels built from a study', () => {
     })
 })
 
-describe('the service', () => {
-    it('stays unstarted without a worker, leaving the recording where it was', () => {
-        const recording = new EmgRecording('rec', study())
-        // No worker means no service to prepare, so the state never advances to loading.
-        expect(recording.state).not.toBe('loading')
+describe('loading', () => {
+    it('starts no worker when the recording is created', () => {
+        const getWorker = vi.fn(workerStub)
+        const recording = new EmgRecording('rec', study(), getWorker)
+        expect(getWorker).not.toHaveBeenCalled()
+        expect(recording.state).toBe('added')
     })
 
-    it('reports itself loading while the worker prepares', () => {
-        const recording = new EmgRecording('rec', study(), workerStub())
+    it('reports itself loading while the worker prepares, and ready only once it answers', async () => {
+        let answer = (_value: unknown) => {}
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockReturnValue(new Promise(resolve => {
+            answer = resolve
+        }) as never)
+        const getWorker = vi.fn(workerStub)
+        const recording = new EmgRecording('rec', study(), getWorker)
+        const loaded = recording.load()
+        await flush()
+        expect(getWorker).toHaveBeenCalledTimes(1)
         expect(recording.state).toBe('loading')
+        answer({ length: 6, samplingRate: 1000 })
+        expect(await loaded).toBe(true)
+        expect(recording.state).toBe('ready')
     })
 
-    it('reports itself ready once the worker answers', async () => {
+    it('builds the channels of a recording created without its study once the study is in place', async () => {
         vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue({ length: 6, samplingRate: 1000 })
-        const recording = new EmgRecording('rec', study(), workerStub())
-        await Promise.resolve()
-        await Promise.resolve()
-        expect(recording.state).toBe('ready')
+        const recording = new EmgRecording('rec', undefined, workerStub)
+        recording.source = study({ nChannels: 2 })
+        expect(await recording.load()).toBe(true)
+        expect(recording.channels.map(c => c.name)).toEqual(['ch_0', 'ch_1'])
+        expect(recording.totalDuration).toBe(6)
     })
 
     it('reports an error when the worker answers with nothing', async () => {
         vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue(null)
-        const recording = new EmgRecording('rec', study(), workerStub())
-        await Promise.resolve()
-        await Promise.resolve()
+        const recording = new EmgRecording('rec', study(), workerStub)
+        expect(await recording.load()).toBe(false)
         expect(recording.state).toBe('error')
         expect(recording.errorReason).toBe('Preparing worker failed')
     })
 
     it('reports an error when preparing the worker rejects', async () => {
-        // Before the catch was added this rejection had no handler at all: the recording stayed in
-        // `loading` for the rest of the session and nothing said why.
         vi.spyOn(EmgService.prototype, 'prepareWorker').mockRejectedValue(new Error('worker gone'))
-        const recording = new EmgRecording('rec', study(), workerStub())
-        await Promise.resolve()
-        await Promise.resolve()
+        const recording = new EmgRecording('rec', study(), workerStub)
+        expect(await recording.load()).toBe(false)
         expect(recording.state).toBe('error')
         expect(recording.errorReason).toBe('Preparing worker failed')
         const failure = (Log.error as unknown as ReturnType<typeof vi.fn>).mock.calls
             .find(call => String(call[0]).includes('Preparing the EMG worker'))
         expect(failure?.[2]).toBeInstanceOf(Error)
     })
+
+    it('reports an error when there is no worker to load with', async () => {
+        const recording = new EmgRecording('rec', study(), () => null)
+        expect(await recording.load()).toBe(false)
+        expect(recording.state).toBe('error')
+        expect(recording.errorReason).toBe('No file worker')
+    })
+
+    it('refuses a study missing its channel count or sampling rate', async () => {
+        const getWorker = vi.fn(workerStub)
+        const recording = new EmgRecording('rec', undefined, getWorker)
+        recording.source = study({ nChannels: undefined })
+        expect(await recording.load()).toBe(false)
+        expect(recording.errorReason).toBe('Recording study is incomplete')
+        expect(getWorker).not.toHaveBeenCalled()
+    })
 })
 
 describe('the activation listener', () => {
+    it('loads a recording activated before it has loaded, then completes its setup', async () => {
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue({ length: 6, samplingRate: 1000 })
+        const recording = new EmgRecording('rec', study(), workerStub)
+        const complete = vi.spyOn(
+            recording as unknown as { _completeSetup: () => Promise<void> },
+            '_completeSetup',
+        ).mockResolvedValue(undefined)
+        recording.isActive = true
+        await flush()
+        expect(recording.state).toBe('ready')
+        expect(complete).toHaveBeenCalledTimes(1)
+    })
+
+    it('loads nothing when a recording with no study is activated', async () => {
+        const getWorker = vi.fn(workerStub)
+        const recording = new EmgRecording('rec', undefined, getWorker)
+        recording.isActive = true
+        await flush()
+        expect(getWorker).not.toHaveBeenCalled()
+        expect(recording.state).toBe('added')
+    })
+
     it('reports a failed setup rather than leaving the rejection unhandled', async () => {
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         const failing = vi.spyOn(
             recording as unknown as { _completeSetup: () => Promise<void> },
             '_completeSetup',
@@ -127,8 +177,7 @@ describe('the activation listener', () => {
         // `isActive` is what dispatches ACTIVATE, which is what the listener is attached to.
         recording.state = 'ready'
         recording.isActive = true
-        await Promise.resolve()
-        await Promise.resolve()
+        await flush()
         expect(failing).toHaveBeenCalled()
         const failure = (Log.error as unknown as ReturnType<typeof vi.fn>).mock.calls
             .find(call => String(call[0]).includes('Completing setup'))
@@ -140,14 +189,14 @@ describe('the activation listener', () => {
     it('deactivates a recording whose setup rejected, as its refusals do', () => {
         // The three refusals inside the setup each deactivate; a rejection has to land in the same
         // state, or an errored recording stays active with a display asking an uncommissioned cache.
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         vi.spyOn(
             recording as unknown as { _completeSetup: () => Promise<void> },
             '_completeSetup',
         ).mockRejectedValue(new Error('no memory'))
         recording.state = 'ready'
         recording.isActive = true
-        return Promise.resolve().then(() => Promise.resolve()).then(() => {
+        return flush().then(() => {
             expect(recording.isActive).toBe(false)
         })
     })
@@ -158,7 +207,7 @@ describe('the deactivation listener', () => {
         removeRuntimeGlobal()
         removeRuntimeGlobal = installRuntimeGlobal({ unloadOnClose: true })
         vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue({ length: 6, samplingRate: 1000 })
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         const unload = vi.spyOn(recording, 'unload').mockResolvedValue(undefined)
         Object.defineProperty(recording, '_service', { value: { isReady: true }, configurable: true })
         recording.isActive = true
@@ -168,7 +217,7 @@ describe('the deactivation listener', () => {
 
     it('keeps a closed recording loaded by default', () => {
         // The shipped setting is false, which is what makes reopening cheap.
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         const unload = vi.spyOn(recording, 'unload').mockResolvedValue(undefined)
         Object.defineProperty(recording, '_service', { value: { isReady: true }, configurable: true })
         recording.isActive = true
@@ -179,7 +228,7 @@ describe('the deactivation listener', () => {
     it('does not unload a recording whose service never became ready', () => {
         removeRuntimeGlobal()
         removeRuntimeGlobal = installRuntimeGlobal({ unloadOnClose: true })
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         const unload = vi.spyOn(recording, 'unload').mockResolvedValue(undefined)
         recording.isActive = true
         recording.isActive = false
@@ -189,7 +238,7 @@ describe('the deactivation listener', () => {
     it('reports a failed unload rather than leaving the rejection unhandled', async () => {
         removeRuntimeGlobal()
         removeRuntimeGlobal = installRuntimeGlobal({ unloadOnClose: true })
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         vi.spyOn(recording, 'unload').mockRejectedValue(new Error('buffer pinned'))
         Object.defineProperty(recording, '_service', { value: { isReady: true }, configurable: true })
         recording.isActive = true
@@ -205,7 +254,7 @@ describe('the deactivation listener', () => {
 
 describe('the sensitivity to gain link', () => {
     it('rescales the audio gain when the sensitivity changes', () => {
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         const setGain = vi.spyOn(recording, 'setAudioGain').mockImplementation(() => undefined)
         recording.sensitivity = 50
         // The signals are in volts while the display is in microvolts, so the gain is the inverse of
@@ -232,7 +281,7 @@ describe('getMainProperties', () => {
         // The base reports a status message for every state short of ready, and this override adds
         // its own properties only when there is no status to show — so a loading recording shows
         // progress rather than a duration it does not have yet.
-        const recording = new EmgRecording('rec', study(), workerStub())
+        const recording = new EmgRecording('rec', study(), workerStub)
         const props = recording.getMainProperties()
         expect(props.has('duration')).toBe(false)
         expect(props.has('signals')).toBe(false)
@@ -308,12 +357,14 @@ describe('the memory manager', () => {
     const manager = {} as never
 
     it('keeps the manager it is given while the module uses shared memory', () => {
-        const recording = new EmgRecording('rec', study(), workerStub(), manager)
+        const recording = new EmgRecording('rec', study(), workerStub, manager)
         expect((recording as unknown as { _memoryManager: unknown })._memoryManager).toBe(manager)
     })
 
-    it('hands the manager to its service', () => {
-        const recording = new EmgRecording('rec', study(), workerStub(), manager)
+    it('hands the manager to the service it loads with', async () => {
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue({ length: 6, samplingRate: 1000 })
+        const recording = new EmgRecording('rec', study(), workerStub, manager)
+        await recording.load()
         const service = (recording as unknown as { _service: { _manager: unknown } })._service
         expect(service._manager).toBe(manager)
     })
@@ -321,7 +372,7 @@ describe('the memory manager', () => {
     it('leaves the manager unused when the module does not use shared memory', () => {
         removeRuntimeGlobal()
         removeRuntimeGlobal = installRuntimeGlobal({ useMemoryManager: false })
-        const recording = new EmgRecording('rec', study(), workerStub(), manager)
+        const recording = new EmgRecording('rec', study(), workerStub, manager)
         expect((recording as unknown as { _memoryManager: unknown })._memoryManager).toBeNull()
     })
 })
