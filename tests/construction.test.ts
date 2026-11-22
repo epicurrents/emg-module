@@ -202,6 +202,132 @@ describe('the activation listener', () => {
     })
 })
 
+describe('the activation of a loaded or loading recording', () => {
+    type Internals = {
+        _completeSetup: () => Promise<void>
+        _getWorker: unknown
+        _runSetup: () => Promise<void>
+        _service: unknown
+    }
+
+    it('commissions the cache of a loaded recording within the activation itself', async () => {
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue({ length: 6, samplingRate: 1000 })
+        const recording = new EmgRecording('rec', study(), workerStub)
+        const complete = vi.spyOn(recording as unknown as Internals, '_completeSetup').mockResolvedValue(undefined)
+        expect(await recording.load()).toBe(true)
+        // No await: the plot requests signals as soon as the recording is active, and the setup has to reach the
+        // worker before that request does.
+        recording.isActive = true
+        expect(complete).toHaveBeenCalledTimes(1)
+    })
+
+    it('completes the setup of a listed recording activated while its study is being read', async () => {
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue({ length: 6, samplingRate: 1000 })
+        let finishRead = (_study: EmgStudyContext) => {}
+        const recording = new EmgRecording('rec', undefined, workerStub)
+        recording.setListing({
+            readStudy: () => new Promise<EmgStudyContext>(resolve => {
+                finishRead = resolve
+            }),
+        } as never)
+        const complete = vi.spyOn(recording as unknown as Internals, '_completeSetup').mockResolvedValue(undefined)
+        // Somebody else's load: the recording is neither listed nor holding a source while it reads.
+        const loaded = recording.load()
+        expect(recording.state).toBe('loading')
+        recording.isActive = true
+        finishRead(study())
+        expect(await loaded).toBe(true)
+        await flush()
+        expect(complete).toHaveBeenCalledTimes(1)
+    })
+
+    it('runs one setup for calls made while it is in flight, and another once it has settled', async () => {
+        const recording = new EmgRecording('rec', study(), workerStub)
+        let finish = () => {}
+        const run = vi.spyOn(recording as unknown as Internals, '_runSetup').mockImplementation(
+            () => new Promise<void>(resolve => {
+                finish = resolve
+            })
+        )
+        const internals = recording as unknown as Internals
+        const first = internals._completeSetup()
+        const second = internals._completeSetup()
+        expect(second).toBe(first)
+        expect(run).toHaveBeenCalledTimes(1)
+        finish()
+        await first
+        expect(internals._completeSetup()).not.toBe(first)
+        expect(run).toHaveBeenCalledTimes(2)
+    })
+
+    it('shares a failing setup with every caller and lets a later one run', async () => {
+        const recording = new EmgRecording('rec', study(), workerStub)
+        const run = vi.spyOn(recording as unknown as Internals, '_runSetup')
+            .mockRejectedValueOnce(new Error('no memory'))
+            .mockResolvedValue(undefined)
+        const internals = recording as unknown as Internals
+        const first = internals._completeSetup()
+        const second = internals._completeSetup()
+        await expect(first).rejects.toThrow('no memory')
+        await expect(second).rejects.toThrow('no memory')
+        await expect(internals._completeSetup()).resolves.toBeUndefined()
+        expect(run).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe('a load that fails or is overtaken', () => {
+    type Internals = { _getWorker: unknown, _service: unknown }
+
+    it('shuts down the service it created when the worker cannot be prepared', async () => {
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockResolvedValue(null)
+        const destroy = vi.spyOn(EmgService.prototype, 'destroy').mockResolvedValue(undefined)
+        const recording = new EmgRecording('rec', study(), workerStub)
+        expect(await recording.load()).toBe(false)
+        expect(destroy).toHaveBeenCalledTimes(1)
+        expect((recording as unknown as Internals)._service).toBe(null)
+    })
+
+    it('stops without a failure reason of its own when the recording is destroyed mid-load', async () => {
+        let answer = (_value: unknown) => {}
+        vi.spyOn(EmgService.prototype, 'prepareWorker').mockReturnValue(new Promise(resolve => {
+            answer = resolve
+        }) as never)
+        vi.spyOn(EmgService.prototype, 'destroy').mockResolvedValue(undefined)
+        const recording = new EmgRecording('rec', study(), workerStub)
+        // The buffer release waits on the worker, which is a stub here and not what is being pinned.
+        vi.spyOn(recording, 'releaseBuffers').mockResolvedValue(undefined)
+        const loaded = recording.load()
+        await flush()
+        await recording.destroy()
+        answer(null)
+        expect(await loaded).toBe(false)
+        expect(recording.state).toBe('destroyed')
+        expect(recording.errorReason).toBe('')
+    })
+
+    it('lets go of the worker source when it is destroyed', async () => {
+        const recording = new EmgRecording('rec', study(), workerStub)
+        await recording.destroy()
+        expect((recording as unknown as Internals)._getWorker).toBe(null)
+    })
+
+    it('loads through prepare rather than being marked ready with no service', async () => {
+        const prepare = vi.spyOn(EmgService.prototype, 'prepareWorker')
+            .mockResolvedValue({ length: 6, samplingRate: 1000 })
+        const recording = new EmgRecording('rec', study(), workerStub)
+        expect(await recording.prepare()).toBe(true)
+        expect(prepare).toHaveBeenCalledTimes(1)
+        expect((recording as unknown as Internals)._service).toBeInstanceOf(EmgService)
+    })
+
+    it('builds no channels from a study that names no channel count', () => {
+        const recording = new EmgRecording('rec', study({ nChannels: undefined }))
+        expect(recording.channels.length).toBe(0)
+        const meta = undefined as unknown as EmgStudyContext['meta']
+        expect(() => new EmgRecording('rec', { name: 'Study', meta, files: [] } as never)).not.toThrow()
+    })
+})
+
 describe('the deactivation listener', () => {
     it('unloads a closed recording when the settings ask for it', async () => {
         removeRuntimeGlobal()

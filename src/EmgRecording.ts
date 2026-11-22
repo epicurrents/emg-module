@@ -101,6 +101,18 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
     protected _isAudioPlaying = false
     protected _samplingRate: number | null = null
     protected _service: EmgService | null = null
+    /**
+     * Identifies the current setup run. {@link _supersedeSetup} moves it on, so a run that started under an earlier
+     * value has been superseded; {@link _isSetupSuperseded} is the check.
+     */
+    protected _setupGeneration = 0
+    /**
+     * The generation the newest setup run started under. Equal to {@link _setupGeneration} while a run that has not
+     * been superseded holds what a setup commissions, which a superseded run then leaves alone.
+     */
+    protected _setupOwnerGeneration = -1
+    /** The cache setup in progress, shared by every call to {@link _completeSetup} made while it runs. */
+    protected _setupRun: Promise<void> | null = null
     #SETTINGS = (window.__EPICURRENTS__?.RUNTIME?.SETTINGS.modules.emg as EmgModuleSettings) || null
     /**
      * Create a new EMG recording. It starts no worker: the service is created and set up when the recording loads,
@@ -150,23 +162,38 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
             // commissioned only once that load has succeeded. The listener slot is synchronous, so the setup's failure
             // has to be caught here or it surfaces as an unhandled rejection with the recording left half set up and
             // nothing said about it.
-            if (!this._source && !this.isListed) {
+            // The event fires for both phases, and the setup belongs to the one in which the recording is active.
+            if (!this._isActive) {
                 return
             }
-            this.load().then(async loaded => {
-                if (loaded && this.isActive) {
-                    await this._completeSetup()
-                }
-            }).catch((e: unknown) => {
+            // A load already reading the study of a listed recording is joined: its state is `loading`, which is
+            // neither listed nor, until the read lands, holding a source.
+            if (!this._source && !this.isListed && this._state !== 'loading') {
+                return
+            }
+            const completeSetup = () => this._completeSetup().catch((e: unknown) => {
                 Log.error(`Completing setup of the EMG recording failed.`, SCOPE, asError(e))
-                this.state = 'error'
-                this.errorReason = 'Completing setup failed'
                 // The same exit the setup's own refusals take: an errored recording that stays
                 // active keeps a display asking a cache that was never commissioned.
-                this.isActive = false
+                this._failSetup('Completing setup failed')
+            })
+            // A loaded recording commissions its cache within this dispatch. The plot asks for signals as soon as it
+            // sees the recording active, and a setup deferred past the dispatch reaches the worker after that request.
+            if (this._state === 'ready') {
+                completeSetup()
+                return
+            }
+            // A recording that has not loaded is loaded first, and its cache is commissioned only once that load has
+            // succeeded, on a recording still active by then.
+            this.load().then(async loaded => {
+                if (loaded && this._isActive) {
+                    await completeSetup()
+                }
+            }).catch((e: unknown) => {
+                Log.error(`Loading the EMG recording on activation failed.`, SCOPE, asError(e))
             })
         }, this.id)
-        if (source) {
+        if (source && EmgRecording.isCompleteStudy(source)) {
             this._readSource(source)
         }
     }
@@ -187,16 +214,89 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
     }
 
     /**
-     * Commission the signal cache and fill it, once, on the recording's first activation.
+     * Commission the signal cache and fill it, once, on the recording's first activation. Calls made while a setup
+     * runs share it: the service reports ready only once the setup's first steps have landed, so a second run started
+     * before then would request the memory and commission the cache again.
+     */
+    protected _completeSetup (): Promise<void> {
+        if (this._setupRun) {
+            return this._setupRun
+        }
+        // Held before the run starts: its first step dispatches an event synchronously, and a listener that asks for
+        // the setup from that dispatch has to find this run rather than start a second one.
+        let settle = () => {}
+        let fail = (_reason: unknown) => {}
+        const run = new Promise<void>((resolve, reject) => {
+            settle = resolve
+            fail = reject
+        })
+        this._setupRun = run
+        // Cleared whatever the outcome, so a recording unloaded and activated again is set up again.
+        const clear = () => {
+            if (this._setupRun === run) {
+                this._setupRun = null
+            }
+        }
+        run.then(clear, clear)
+        this._runSetup().then(settle, fail)
+        return run
+    }
+
+    /**
+     * Leave the recording in `error` after a setup step failed. The reason goes first, so whatever reacts to the state
+     * finds it in place. The runtime deactivates a dataset member that enters `error`; the recording deactivates
+     * itself as well when it is still active after that, as one outside a dataset is.
+     * @param reason - What failed, as shown to the user.
+     */
+    protected _failSetup (reason: string) {
+        this.errorReason = reason
+        this.state = 'error'
+        if (this._isActive) {
+            this.isActive = false
+        }
+    }
+
+    /**
+     * Has the setup run that started under `generation` been superseded: the recording was unloaded or destroyed
+     * while the run was awaiting something. {@link _runSetup} checks after every await and stops without
+     * commissioning or dispatching anything more.
+     * @param generation - The value of `_setupGeneration` read when the run started.
+     */
+    protected _isSetupSuperseded (generation: number) {
+        return generation !== this._setupGeneration || (this._state as string) === 'destroyed'
+    }
+
+    /**
+     * Give back what a superseded setup run commissioned after the unload that superseded it had already released the
+     * buffers: the memory request, the mutex or the cache. A newer run that has taken the recording up owns what is
+     * commissioned now, and a destroyed recording has let go of its service, so both are left alone.
+     */
+    protected async _releaseSupersededSetup () {
+        if ((this._state as string) === 'destroyed' || this._setupOwnerGeneration === this._setupGeneration) {
+            return
+        }
+        try {
+            await this.releaseBuffers()
+        } catch (e: unknown) {
+            Log.warn(`Releasing the buffers of a superseded setup failed: ${asError(e).message}`, SCOPE)
+        }
+    }
+
+    /**
+     * Run one cache setup; see {@link _completeSetup}.
      *
      * Runs only while the service has not yet reported ready, so a second activation is a no-op. The
      * three failure exits each set a state and deactivate the recording rather than throwing, so a
-     * caller that cannot see this promise still learns the outcome from the resource.
+     * caller that cannot see this promise still learns the outcome from the resource. A run superseded by an unload
+     * or a destroy stops at its next check.
      */
-    protected async _completeSetup () {
+    protected async _runSetup () {
         if (!this._service || this._service.isReady || this._state !== 'ready') {
             return
         }
+        // Read before the first await; every await below is followed by a check against it.
+        const generation = this._setupGeneration
+        this._setupOwnerGeneration = generation
         this.dispatchEvent(EmgRecording.EVENTS.INITIAL_SETUP, 'before')
         if (this._memoryManager) {
             // Floats the mutex needs for the whole recording: one cell for the master lock, five for
@@ -210,30 +310,35 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 totalMem += Math.ceil(chan.samplingRate*coveredLength) + dataFieldsLen
             }
             const memorySuccess = await this._service?.requestMemory(totalMem)
+            // Checked before the outcome is read: an unload that interrupted the request owns the state, and a
+            // request it made fail is no failure of the recording.
+            if (this._isSetupSuperseded(generation)) {
+                return this._releaseSupersededSetup()
+            }
             if (!memorySuccess) {
                 Log.error(`Memory allocation failed.`, SCOPE)
-                this.state = 'error'
-                this.errorReason = 'Memory allocation failed'
-                this.isActive = false
+                this._failSetup('Memory allocation failed')
                 return
             }
             Log.debug(`Memory allocation complete.`, SCOPE)
             const mutex = await this.setupMutex()
+            if (this._isSetupSuperseded(generation)) {
+                return this._releaseSupersededSetup()
+            }
             if (!mutex) {
                 Log.error(`Mutex setup failed.`, SCOPE)
-                this.state = 'error'
-                this.errorReason = 'Mutex setup failed'
-                this.isActive = false
+                this._failSetup('Mutex setup failed')
                 return
             }
             Log.debug(`Buffer setup complete.`, SCOPE)
         } else {
             const dataCache = await this.setupCache()
+            if (this._isSetupSuperseded(generation)) {
+                return this._releaseSupersededSetup()
+            }
             if (!dataCache) {
                 Log.error(`Data cache setup failed.`, SCOPE)
-                this.state = 'error'
-                this.errorReason = 'Data cache setup failed'
-                this.isActive = false
+                this._failSetup('Data cache setup failed')
                 return
             }
             Log.debug(`Data cache setup complete.`, SCOPE)
@@ -241,9 +346,16 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         Log.debug(`EMG recording initial setup complete.`, SCOPE)
         this.dispatchEvent(EmgRecording.EVENTS.INITIAL_SETUP, 'after')
         await this.cacheSignals()
+        if (this._isSetupSuperseded(generation)) {
+            return this._releaseSupersededSetup()
+        }
         this.dispatchEvent(BiosignalResourceEvents.SIGNAL_CACHING_COMPLETE)
         // Set the signals to use for audio playback.
         const signals = await this._service?.getSignals([0, this._dataDuration])
+        // A run overtaken while the signals were read does not set them as the audio of an unloaded recording.
+        if (this._isSetupSuperseded(generation)) {
+            return this._releaseSupersededSetup()
+        }
         if (signals) {
             this.setAudioSignals(
                 this._dataDuration,
@@ -267,6 +379,9 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         if (!this._channels.length) {
             this._readSource(source)
         }
+        // Read before the await; the check after it is against this.
+        const generation = this._loadGeneration
+        let created: EmgService | null = null
         if (!this._service) {
             const worker = this._getWorker?.() ?? null
             if (!worker) {
@@ -274,16 +389,37 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
                 this._errorReason = 'No file worker'
                 return false
             }
-            this._service = new EmgService(this, worker, this._memoryManager || undefined)
+            created = new EmgService(this, worker, this._memoryManager || undefined)
+            this._service = created
         }
+        let prepared = false
         try {
-            if (await this._service.prepareWorker(source)) {
-                return true
-            }
+            prepared = !!await this._service.prepareWorker(source)
         } catch (e: unknown) {
             Log.error(`Preparing the EMG worker failed.`, SCOPE, asError(e))
         }
+        // A recording unloaded or destroyed while its worker was being prepared has nothing left to set up, and its
+        // state belongs to whatever superseded the load.
+        if (this._isLoadSuperseded(generation)) {
+            this._releaseSupersededService(created)
+            return false
+        }
+        if (!this._service) {
+            return false
+        }
+        if (prepared) {
+            return true
+        }
         this._errorReason = 'Preparing worker failed'
+        // A recording that failed to load is not loaded again, so a service created for this load would keep its
+        // worker running for nothing. The shutdown is not awaited: it waits on an answer from a worker that has just
+        // failed to give one, and the load's outcome does not depend on it.
+        if (created && this._service === created) {
+            this._service = null
+            created.destroy().catch((e: unknown) => {
+                Log.warn(`Shutting down the EMG worker after a failed load failed: ${asError(e).message}`, SCOPE)
+            })
+        }
         return false
     }
 
@@ -303,6 +439,32 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         this._dataDuration = source.meta.duration || 0
         this._totalDuration = this._dataDuration // EMG recordings are continuous.
         this._samplingRate = source.meta.samplingRate || 0
+    }
+
+    /**
+     * Shut down the service a superseded load created, so its worker does not outlive a load that set nothing up. A
+     * service the recording no longer holds has been released by whatever superseded the load, and one a later load
+     * has taken up is that load's to keep.
+     * @param created - The service the superseded load created; null when it used one the recording already had.
+     */
+    protected _releaseSupersededService (created: EmgService | null) {
+        if (!created || this._service !== created || this._loadRun || this._state === 'ready') {
+            return
+        }
+        this._service = null
+        created.destroy().catch((e: unknown) => {
+            Log.warn(`Shutting down the EMG worker of a superseded load failed: ${asError(e).message}`, SCOPE)
+        })
+    }
+
+    /**
+     * Supersede the setup in progress, if there is one: its run stops at its next check, and the next call to
+     * {@link _completeSetup} starts a run of its own. `unload` and `destroy` call this before anything they await,
+     * beside core's `_supersedeLoad`.
+     */
+    protected _supersedeSetup () {
+        this._setupGeneration++
+        this._setupRun = null
     }
 
     protected override _constructCascadeMontage (
@@ -369,6 +531,9 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
 
     destroy (): Promise<void> {
         this._audio.destroy()
+        this._getWorker = null
+        // A cache setup still running stops at its next check, and is not one a later call may join.
+        this._supersedeSetup()
         return super.destroy()
     }
 
@@ -416,6 +581,13 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         return false
     }
 
+    /**
+     * Load the recording; see {@link load}.
+     */
+    prepare (options?: ConfigStudyLoader) {
+        return this.load(options)
+    }
+
     rewindAudio () {
         try {
             this.dispatchEvent(EmgRecording.EVENTS.AUDIO_PLAYBACK_STOPPED, 'before')
@@ -437,5 +609,12 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         // We do not expect to see amplitudes over 50 mV in EMG signals.
         this._audio.sampleMaxAbsValue = 5*1e-2
         this._audio.setSignals(length, samplingRate, ...signals)
+    }
+
+    unload () {
+        // A cache setup still running was commissioning what the unload releases: it stops at its next check, and the
+        // next activation starts its own rather than joining it.
+        this._supersedeSetup()
+        return super.unload()
     }
 }

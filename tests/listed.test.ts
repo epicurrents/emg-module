@@ -34,6 +34,13 @@ const importerDouble = () => {
         study: null as StudyContext | null,
         studyLoader: null as unknown,
         getFileTypeWorker: vi.fn(workerStub),
+        importFile: vi.fn(async (file: File) => {
+            // As the format importers leave it: they are modality-agnostic, and the loader claims what they read.
+            importer.study!.modality = 'signal'
+            importer.study!.meta = { duration: 5, nChannels: 2, samplingRate: 1000 }
+            importer.study!.files = [{ file, role: 'data', url: 'blob:file' } as StudyContext['files'][number]]
+            return true
+        }),
         importUrl: vi.fn(async (url: string) => {
             importer.study!.meta = { duration: 5, nChannels: 2, samplingRate: 1000 }
             importer.study!.files = [{ role: 'data', url } as StudyContext['files'][number]]
@@ -102,5 +109,47 @@ describe('a listed EMG study', () => {
         expect((listed as EmgRecording).channels).toHaveLength(2)
         expect(importer.getFileTypeWorker).toHaveBeenCalledTimes(1)
         expect(importer.getFileTypeWorker).toHaveBeenCalledWith('emg')
+    })
+
+    it('loads a study listed from a file, which the read hands back claimed as EMG', async () => {
+        const file = new File(['emg'], 'listed.wav')
+        const listed = app.listStudy({ loader: 'emg/url', name: 'Listed', source: file }, { dataset })!
+        expect(await listed.load()).toBe(true)
+        expect(importer.importFile).toHaveBeenCalledTimes(1)
+        expect(listed.source?.modality).toBe('emg')
+        expect((listed as EmgRecording).channels).toHaveLength(2)
+    })
+
+    it('is left listed, with the service of the load shut down, when it is unloaded while it loads', async () => {
+        let answer = (_response: { length: number, samplingRate: number }) => {}
+        const prepareWorker = vi.spyOn(EmgService.prototype, 'prepareWorker').mockReturnValue(new Promise(resolve => {
+            answer = resolve
+        }))
+        const destroy = vi.spyOn(EmgService.prototype, 'destroy').mockResolvedValue(undefined)
+        const listed = app.listStudy({ loader: 'emg/url', name: 'Listed', source: 'blob:emg' }, { dataset })!
+        // The buffer release is core's own and not what is being pinned.
+        vi.spyOn(listed as EmgRecording, 'releaseBuffers').mockResolvedValue(undefined)
+        const loaded = listed.load()
+        await vi.waitFor(() => expect(prepareWorker).toHaveBeenCalledTimes(1))
+        await listed.unload()
+        expect(listed.state).toBe('added')
+        answer({ length: 5, samplingRate: 1000 })
+        expect(await loaded).toBe(false)
+        expect(listed.state).toBe('added')
+        expect(listed.errorReason).toBe('')
+        expect(destroy).toHaveBeenCalledTimes(1)
+        expect((listed as unknown as { _service: unknown })._service).toBe(null)
+    })
+
+    it('starts a setup of its own once an unload has interrupted the one in flight', async () => {
+        type Internals = { _completeSetup: () => Promise<void>, _runSetup: () => Promise<void> }
+        const listed = app.listStudy({ loader: 'emg/url', name: 'Listed', source: 'blob:emg' }, { dataset })!
+        vi.spyOn(listed as EmgRecording, 'releaseBuffers').mockResolvedValue(undefined)
+        const internals = listed as unknown as Internals
+        const run = vi.spyOn(internals, '_runSetup').mockImplementation(() => new Promise<void>(() => {}))
+        const first = internals._completeSetup()
+        await listed.unload()
+        expect(internals._completeSetup()).not.toBe(first)
+        expect(run).toHaveBeenCalledTimes(2)
     })
 })

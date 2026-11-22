@@ -17,13 +17,24 @@ import { BiosignalMutex } from '@epicurrents/core'
 
 vi.mock('scoped-event-log', async () => (await import('./logMock')).makeLogMock())
 
+/** One run of the setup, which is what `_completeSetup` starts and shares between its callers. */
 const completeSetup = (context: object) =>
     (EmgRecording.prototype as unknown as Record<string, (this: unknown) => Promise<void>>)
-        ._completeSetup.call(context)
+        ._runSetup.call(context)
 
 type Ctx = ReturnType<typeof makeContext>
 
+/** The recording's own helpers the setup calls on itself, run against the stub as they run against a recording. */
+const helpers = EmgRecording.prototype as unknown as Record<string, (...args: never[]) => unknown>
+
 const makeContext = (over: Record<string, unknown> = {}) => ({
+    _failSetup: helpers._failSetup,
+    _isActive: true,
+    _isSetupSuperseded: helpers._isSetupSuperseded,
+    _releaseSupersededSetup: helpers._releaseSupersededSetup,
+    _setupGeneration: 0,
+    _setupOwnerGeneration: -1,
+    releaseBuffers: vi.fn().mockResolvedValue(undefined),
     _state: 'ready' as string,
     _dataDuration: 10,
     _samplingRate: 1000,

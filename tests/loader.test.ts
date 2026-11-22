@@ -169,7 +169,7 @@ describe('modality stamping', () => {
      * context template started with. Both loading paths have to narrow it, or anything that resolves
      * a study by modality finds nothing.
      */
-    for (const method of ['loadFromDirectory', 'loadFromUrl'] as const) {
+    for (const method of ['loadFromDirectory', 'loadFromFile', 'loadFromUrl'] as const) {
         it(`stamps the EMG modality onto a study loaded by ${method}`, async () => {
             const base = Object.getPrototypeOf(EmgStudyLoader.prototype) as
                 Record<string, (...a: unknown[]) => Promise<unknown>>

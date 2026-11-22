@@ -90,6 +90,19 @@ export default class EmgStudyLoader extends GenericStudyLoader {
         return context
     }
 
+    public async loadFromFile (
+        file: File,
+        config?: ConfigStudyLoader,
+        preStudy?: StudyContext
+    ): Promise<StudyContext | null> {
+        const context = await super.loadFromFile(file, config, preStudy)
+        if (!context) {
+            return null
+        }
+        context.modality = 'emg'
+        return context
+    }
+
     public async loadFromUrl (
         fileUrl: string,
         config?: ConfigStudyLoader,

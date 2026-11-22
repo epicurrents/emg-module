@@ -54,6 +54,8 @@ Three slots in this package take a callback whose return value is discarded, and
 
 `_load` catches a rejected `prepareWorker` itself and resolves false with a reason, so core's load leaves the recording in `error` with the cause logged rather than as a generic failure.
 
+The cache setup follows the supersession and failure rules [eeg-module's AGENTS.md](../eeg-module/AGENTS.md) describes: `unload` and `destroy` call `_supersedeSetup()`, `_runSetup` checks `_isSetupSuperseded(generation)` after every await and gives back what it commissioned late through `_releaseSupersededSetup`, and a failed step goes through `_failSetup`, reason before state. A failed load shuts down the service it created, so core's `retryLoad` starts from a new worker. [tests/retry.test.ts](tests/retry.test.ts) pins both through the real application.
+
 When adding a branch to the runtime module, note that core's three filter setters are `async`. A branch that calls one without a catch is a floating promise; `@typescript-eslint/no-floating-promises` is on and will say so.
 
 ## Two paths build the channels, and they must agree
