@@ -64,7 +64,7 @@ Each of the three playback methods dispatches its event in the `before` phase as
 
 Two numbers in this path are worth knowing before changing them. `setAudioSignals` takes its length in **seconds**, not samples — it reaches core as `durationSeconds`. And the sample scale is capped at 50 mV, which is the largest amplitude surface EMG produces; the asset normalises against that cap, so raising it makes every recording quieter and lowering it clips.
 
-The gain follows the sensitivity: the recording watches its own `sensitivity` property and rescales the audio by `1e-6 / sensitivity`, so the trace and the sound stay in step.
+The gain follows the sensitivity: the recording watches its own `sensitivity` property and rescales the audio by `25e-6 / sensitivity`, so the trace and the sound stay in step, and 50 µV/div plays at half of unit gain. `setAudioSignals` applies the same gain, because the sensitivity is usually set before there is anything to play; that relies on core keeping a gain set before playback starts.
 
 The cascade
 -----------

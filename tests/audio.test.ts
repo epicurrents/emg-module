@@ -161,6 +161,14 @@ describe('setAudioSignals', () => {
         call('setAudioSignals', context, 10, 1000, left, right)
         expect(context._audio.setSignals).toHaveBeenCalledWith(10, 1000, left, right)
     })
+
+    it('applies the gain of the sensitivity set before there was anything to play', () => {
+        const context = makeContext({ _sensitivityGain: 0.5 })
+        call('setAudioSignals', context, 10, 1000, new Float32Array([0, 1]))
+        expect(context._audio.setGain).toHaveBeenCalledWith(0.5)
+        expect(context._audio.setGain.mock.invocationCallOrder[0])
+            .toBeGreaterThan(context._audio.setSignals.mock.invocationCallOrder[0])
+    })
 })
 
 describe('setAudioGain', () => {

@@ -21,6 +21,12 @@ import { Log } from 'scoped-event-log'
 
 const SCOPE = 'EmgRecording'
 
+/**
+ * The sensitivity, in volts per division, at which audio plays at unit gain. Gain is inversely proportional to the
+ * sensitivity, so 50 µV/div plays at half of unit gain, where the amplifier's background noise stays in the background.
+ */
+const UNIT_GAIN_SENSITIVITY = 25e-6
+
 const asError = (reason: unknown) => {
     return reason instanceof Error ? reason : new Error(String(reason))
 }
@@ -199,7 +205,7 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
     }
 
     get _sensitivityGain () {
-        return 1e-6/(this.sensitivity || 1)
+        return this.sensitivity ? UNIT_GAIN_SENSITIVITY/this.sensitivity : 1
     }
 
     get isAudioPlaying () {
@@ -609,6 +615,8 @@ export default class EmgRecording extends GenericBiosignalResource implements Em
         // We do not expect to see amplitudes over 50 mV in EMG signals.
         this._audio.sampleMaxAbsValue = 5*1e-2
         this._audio.setSignals(length, samplingRate, ...signals)
+        // The sensitivity may have been set before there was anything to play, so playback starts at its gain.
+        this._audio.setGain(this._sensitivityGain)
     }
 
     unload () {

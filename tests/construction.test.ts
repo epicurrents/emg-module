@@ -382,10 +382,9 @@ describe('the sensitivity to gain link', () => {
     it('rescales the audio gain when the sensitivity changes', () => {
         const recording = new EmgRecording('rec', study(), workerStub)
         const setGain = vi.spyOn(recording, 'setAudioGain').mockImplementation(() => undefined)
-        recording.sensitivity = 50
-        // The signals are in volts while the display is in microvolts, so the gain is the inverse of
-        // the sensitivity scaled by that factor.
-        expect(setGain).toHaveBeenCalledWith(1e-6/50)
+        recording.sensitivity = 50e-6
+        // Gain is inversely proportional to the sensitivity, unity at 25 µV/div.
+        expect(setGain).toHaveBeenCalledWith(25e-6/50e-6)
     })
 
     it('treats a zero sensitivity as unity rather than dividing by it', () => {
